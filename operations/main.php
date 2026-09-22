@@ -39,9 +39,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !user_logged_in()) {
 $user = current_user();
 $stats = null;
 $gameState = null;
+$playerRank = null;
 if ($user && $db instanceof PDO) {
     $gameState = update_game_clock($db);
     $stats = get_player_stats($db, (int) $user['id']);
+    $playerRank = get_player_rank($db, (int) $user['id']);
     if ($stats && ($stats['profession'] === null || $stats['current_city'] === null)) {
         redirect('./?page=profession');
     }
@@ -159,6 +161,7 @@ if ($user && $db instanceof PDO) {
                 <div class="stat"><span>Kasa</span><strong><?= number_format((int) $stats['cash'], 0, '.', ',') ?> $</strong></div>
         <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
                 <div class="stat"><span>Respekt</span><strong><?= (int) $stats['respect'] ?> pkt</strong></div>
+                <div class="stat"><span>Miejsce</span><strong>#<?= (int) ($playerRank ?? 0) ?></strong></div>
                 <div class="stat"><span>Profesja</span><strong><?= $stats['profession'] === null ? 'Nie wybrano' : e($stats['profession']) ?></strong></div>
                 <div class="stat"><span>Obecne miasto</span><strong><?= $stats['current_city'] === null ? 'Nie wybrano' : e($stats['current_city']) ?></strong></div>
                 <div class="stat"><span>Energia</span><strong><?= (int) $stats['energy'] ?>%</strong></div>
