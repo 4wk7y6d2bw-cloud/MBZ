@@ -38,7 +38,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !user_logged_in()) {
 
 $user = current_user();
 $stats = null;
+$gameState = null;
 if ($user && $db instanceof PDO) {
+    $gameState = update_game_clock($db);
     $stats = get_player_stats($db, (int) $user['id']);
     if ($stats && ($stats['profession'] === null || $stats['current_city'] === null)) {
         redirect('./?page=profession');
@@ -70,6 +72,8 @@ if ($user && $db instanceof PDO) {
         .game-nav a:hover { background: #333; }
         .menu-toggle { display: none; width: 46px; height: 42px; padding: 8px; margin: 0; background: #242424; color: #fff; }
         .menu-toggle span { display: block; height: 3px; margin: 4px 0; background: currentColor; border-radius: 2px; }
+        .game-state { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .game-state .stat { text-align: center; }
         .location-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
         .location-button { min-height: 92px; display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px solid #3b3b3b; border-radius: 12px; background: #181818; color: #fff; text-decoration: none; text-align: center; font-weight: 700; }
         .location-button:hover { background: #242424; border-color: #555; }
@@ -79,6 +83,7 @@ if ($user && $db instanceof PDO) {
         .stat strong { font-size: 18px; }
         @media (max-width: 720px) {
             .auth-grid, .stats { grid-template-columns: 1fr; }
+            .game-state { grid-template-columns: 1fr; }
             .location-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .topbar { align-items: flex-start; flex-direction: column; }
             .button.secondary { margin-left: 0; }
@@ -116,6 +121,14 @@ if ($user && $db instanceof PDO) {
         <a href="#">Podróż</a>
         <a href="#">Rynek</a>
     </nav>
+
+    <?php if ($gameState): ?>
+    <section class="game-state" aria-label="Stan gry">
+        <div class="stat"><span>Dzień gry</span><strong><?= (int) $gameState['game_day'] ?>/60</strong></div>
+        <div class="stat"><span>Sezon gry</span><strong><?= (int) $gameState['season'] ?></strong></div>
+        <div class="stat"><span>Następna aktualizacja rankingu</span><strong id="rankingCountdown" data-next="<?= e($gameState['next_ranking_update']) ?>">--:--:--</strong></div>
+    </section>
+    <?php endif; ?>
 
     <section class="location-grid" aria-label="Lokacje gry">
         <a class="location-button" href="./?page=main&location=ulica">Ulica</a>
@@ -215,6 +228,20 @@ if ($user && $db instanceof PDO) {
 <script>
 const menuToggle = document.getElementById('menuToggle');
 const gameNav = document.getElementById('gameNav');
+const rankingCountdown = document.getElementById('rankingCountdown');
+if (rankingCountdown) {
+    const next = new Date(rankingCountdown.dataset.next.replace(' ', 'T')).getTime();
+    const tick = () => {
+        const diff = Math.max(0, next - Date.now());
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        rankingCountdown.textContent = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        if (diff <= 0) location.reload();
+    };
+    tick();
+    setInterval(tick, 1000);
+}
 if (menuToggle && gameNav) {
     menuToggle.addEventListener('click', () => {
         const open = gameNav.classList.toggle('open');
