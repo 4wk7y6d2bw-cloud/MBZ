@@ -144,6 +144,7 @@ if ($user && $db instanceof PDO) {
         <?php if ($stats): ?>
             <div class="stats">
                 <div class="stat"><span>Kasa</span><strong><?= number_format((int) $stats['cash'], 0, '.', ',') ?> $</strong></div>
+        <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
                 <div class="stat"><span>Respekt</span><strong><?= (int) $stats['respect'] ?> pkt</strong></div>
                 <div class="stat"><span>Profesja</span><strong><?= $stats['profession'] === null ? 'Nie wybrano' : e($stats['profession']) ?></strong></div>
                 <div class="stat"><span>Energia</span><strong><?= (int) $stats['energy'] ?>%</strong></div>
