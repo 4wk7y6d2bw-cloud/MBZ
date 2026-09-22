@@ -117,6 +117,10 @@ function require_login(): void
 
 function require_admin(): void
 {
+    if (!user_logged_in()) {
+        redirect('./');
+    }
+
     if (!current_user_is_admin()) {
         http_response_code(403);
         exit('Brak uprawnień.');
