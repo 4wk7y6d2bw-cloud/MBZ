@@ -17,7 +17,7 @@ $page = preg_replace('/[^a-zA-Z0-9_-]/', '', $page) ?: 'main';
 $allowedPages = [
     'main',
     'admin',
-    'admin_logout',
+    'logout',
     'error404',
 ];
 
