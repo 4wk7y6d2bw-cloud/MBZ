@@ -112,34 +112,49 @@ function update_game_clock(PDO $db): array
     $db->beginTransaction();
     try {
         $row = $db->query('SELECT * FROM game_state WHERE id = 1 FOR UPDATE')->fetch();
-        if (!$row) {
-            throw new RuntimeException('Brak stanu gry.');
-        }
+        if (!$row) throw new RuntimeException('Brak stanu gry.');
 
         $now = new DateTimeImmutable('now');
-        $next = new DateTimeImmutable($row['next_ranking_update']);
 
-        while ($now >= $next) {
-            $db->exec('UPDATE player_stats SET public_respect = respect');
+        while (true) {
+            $next = new DateTimeImmutable($row['next_ranking_update']);
 
-            $day = (int) $row['game_day'] + 1;
-            $season = (int) $row['season'];
+            if ((int) $row['is_break'] === 1) {
+                if ($now < $next) break;
 
-            if ($day > 60) {
-                $day = 1;
-                $season++;
+                $row['season'] = (int) $row['season'] + 1;
+                $row['game_day'] = 1;
+                $row['is_break'] = 0;
+                $next = $next->modify('+4 hours');
+
+                $stmt = $db->prepare('UPDATE game_state SET season=:season, game_day=1, is_break=0, next_ranking_update=:next_update WHERE id=1');
+                $stmt->execute([
+                    'season' => $row['season'],
+                    'next_update' => $next->format('Y-m-d H:i:s'),
+                ]);
+                $row['next_ranking_update'] = $next->format('Y-m-d H:i:s');
+                continue;
             }
 
-            $next = $next->modify('+4 hours');
-            $stmt = $db->prepare('UPDATE game_state SET game_day = :game_day, season = :season, next_ranking_update = :next_update WHERE id = 1');
+            if ($now < $next) break;
+
+            $db->exec('UPDATE player_stats SET public_respect = respect');
+
+            if ((int) $row['game_day'] >= 60) {
+                $row['is_break'] = 1;
+                $next = $next->modify('+24 hours');
+            } else {
+                $row['game_day'] = (int) $row['game_day'] + 1;
+                $next = $next->modify('+4 hours');
+            }
+
+            $stmt = $db->prepare('UPDATE game_state SET game_day=:game_day, season=:season, is_break=:is_break, next_ranking_update=:next_update WHERE id=1');
             $stmt->execute([
-                'game_day' => $day,
-                'season' => $season,
+                'game_day' => $row['game_day'],
+                'season' => $row['season'],
+                'is_break' => $row['is_break'],
                 'next_update' => $next->format('Y-m-d H:i:s'),
             ]);
-
-            $row['game_day'] = $day;
-            $row['season'] = $season;
             $row['next_ranking_update'] = $next->format('Y-m-d H:i:s');
         }
 
