@@ -126,7 +126,7 @@ if ($user && $db instanceof PDO) {
     <section class="game-state" aria-label="Stan gry">
         <div class="stat"><span>Dzień gry</span><strong><?= (int) $gameState['game_day'] ?>/60</strong></div>
         <div class="stat"><span>Sezon gry</span><strong><?= (int) $gameState['season'] ?></strong></div>
-        <div class="stat"><span>Następna aktualizacja rankingu</span><strong id="rankingCountdown" data-next="<?= e($gameState['next_ranking_update']) ?>">--:--:--</strong></div>
+        <div class="stat"><span><?= (int) ($gameState['is_break'] ?? 0) === 1 ? 'Start następnego sezonu' : 'Następna aktualizacja rankingu' ?></span><strong id="rankingCountdown" data-next="<?= e($gameState['next_ranking_update']) ?>">--:--:--</strong></div>
     </section>
     <?php endif; ?>
 
