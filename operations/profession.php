@@ -10,7 +10,7 @@ if (!$db instanceof PDO) {
 $user = current_user();
 $stats = get_player_stats($db, (int) $user['id']);
 
-if ($stats && $stats['profession'] !== null) {
+if ($stats && $stats['profession'] !== null && $stats['current_city'] !== null) {
     redirect('./');
 }
 
@@ -53,15 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!in_array($city, $cities, true)) {
                 $error = 'Wybierz poprawne miasto startowe.';
             } else {
-                $_SESSION['starting_city'] = $city;
-
                 $stmt = $db->prepare(
                     'UPDATE player_stats
-                     SET profession = :profession
-                     WHERE user_id = :user_id AND profession IS NULL'
+                     SET profession = :profession, current_city = :current_city
+                     WHERE user_id = :user_id'
                 );
                 $stmt->execute([
                     'profession' => $profession,
+                    'current_city' => $city,
                     'user_id' => (int) $user['id'],
                 ]);
 
