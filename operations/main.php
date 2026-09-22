@@ -70,12 +70,16 @@ if ($user && $db instanceof PDO) {
         .game-nav a:hover { background: #333; }
         .menu-toggle { display: none; width: 46px; height: 42px; padding: 8px; margin: 0; background: #242424; color: #fff; }
         .menu-toggle span { display: block; height: 3px; margin: 4px 0; background: currentColor; border-radius: 2px; }
+        .location-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .location-button { min-height: 92px; display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px solid #3b3b3b; border-radius: 12px; background: #181818; color: #fff; text-decoration: none; text-align: center; font-weight: 700; }
+        .location-button:hover { background: #242424; border-color: #555; }
         .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .stat { padding: 14px; background: #111; border: 1px solid #333; border-radius: 10px; }
         .stat span { display: block; color: #aaa; font-size: 13px; margin-bottom: 5px; }
         .stat strong { font-size: 18px; }
         @media (max-width: 720px) {
             .auth-grid, .stats { grid-template-columns: 1fr; }
+            .location-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .topbar { align-items: flex-start; flex-direction: column; }
             .button.secondary { margin-left: 0; }
             .menu-toggle { display: block; }
@@ -112,6 +116,28 @@ if ($user && $db instanceof PDO) {
         <a href="#">Podróż</a>
         <a href="#">Rynek</a>
     </nav>
+
+    <section class="location-grid" aria-label="Lokacje gry">
+        <a class="location-button" href="./?page=main&location=ulica">Ulica</a>
+        <a class="location-button" href="./?page=main&location=napad">Napad</a>
+        <a class="location-button" href="./?page=main&location=gang">Gang</a>
+        <a class="location-button" href="./?page=main&location=sabotaz">Sabotaż</a>
+
+        <a class="location-button" href="./?page=main&location=nocne-zycie">Nocne życie</a>
+        <a class="location-button" href="./?page=main&location=kasyno">Kasyno</a>
+        <a class="location-button" href="./?page=main&location=handel">Handel</a>
+        <a class="location-button" href="./?page=main&location=skwer">Skwer</a>
+
+        <a class="location-button" href="./?page=main&location=czarny-rynek">Czarny rynek</a>
+        <a class="location-button" href="./?page=main&location=szpital">Szpital</a>
+        <a class="location-button" href="./?page=main&location=wiezienie">Więzienie</a>
+        <a class="location-button" href="./?page=main&location=bank">Bank</a>
+
+        <a class="location-button" href="./?page=main&location=policja">Policja</a>
+        <a class="location-button" href="./?page=main&location=detektyw">Detektyw</a>
+        <a class="location-button" href="./?page=main&location=transport">Transport</a>
+        <a class="location-button" href="./?page=main&location=silownia">Siłownia</a>
+    </section>
 
     <section class="card">
         <h2>Statystyki postaci</h2>
