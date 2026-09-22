@@ -19,8 +19,8 @@ function ensure_player_stats(PDO $db, int $userId): void
 {
     $stmt = $db->prepare(
         'INSERT IGNORE INTO player_stats
-        (user_id, cash, respect, profession, energy, tickets, strength, endurance, intelligence, charisma, cunning, tickets_last_grant)
-        VALUES (:user_id, 500, 100, NULL, 100, 25, 10, 10, 10, 10, 10, NOW())'
+        (user_id, cash, credits, respect, profession, energy, tickets, strength, endurance, intelligence, charisma, cunning, tickets_last_grant)
+        VALUES (:user_id, 500, 0, 100, NULL, 100, 25, 10, 10, 10, 10, 10, NOW())'
     );
     $stmt->execute(['user_id' => $userId]);
 }
