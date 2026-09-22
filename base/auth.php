@@ -105,3 +105,48 @@ function require_admin(): void
         exit('Brak uprawnień.');
     }
 }
+
+
+function update_game_clock(PDO $db): array
+{
+    $db->beginTransaction();
+    try {
+        $row = $db->query('SELECT * FROM game_state WHERE id = 1 FOR UPDATE')->fetch();
+        if (!$row) {
+            throw new RuntimeException('Brak stanu gry.');
+        }
+
+        $now = new DateTimeImmutable('now');
+        $next = new DateTimeImmutable($row['next_ranking_update']);
+
+        while ($now >= $next) {
+            $db->exec('UPDATE player_stats SET public_respect = respect');
+
+            $day = (int) $row['game_day'] + 1;
+            $season = (int) $row['season'];
+
+            if ($day > 60) {
+                $day = 1;
+                $season++;
+            }
+
+            $next = $next->modify('+4 hours');
+            $stmt = $db->prepare('UPDATE game_state SET game_day = :game_day, season = :season, next_ranking_update = :next_update WHERE id = 1');
+            $stmt->execute([
+                'game_day' => $day,
+                'season' => $season,
+                'next_update' => $next->format('Y-m-d H:i:s'),
+            ]);
+
+            $row['game_day'] = $day;
+            $row['season'] = $season;
+            $row['next_ranking_update'] = $next->format('Y-m-d H:i:s');
+        }
+
+        $db->commit();
+        return $row;
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+}
