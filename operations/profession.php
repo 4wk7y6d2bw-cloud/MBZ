@@ -23,7 +23,14 @@ $professions = [
     'Alfons',
 ];
 
+$cities = [
+    'Warszawa', 'Kraków', 'Wrocław', 'Łódź', 'Poznań', 'Gdańsk', 'Szczecin',
+    'Rzeszów', 'Katowice', 'Bydgoszcz', 'Olsztyn', 'Białystok', 'Lublin', 'Kielce',
+];
+
 $error = '';
+$step = 1;
+$selectedProfession = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_valid($_POST['csrf_token'] ?? null)) {
@@ -35,18 +42,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!in_array($profession, $professions, true)) {
             $error = 'Wybierz poprawną profesję.';
+        } elseif (($_POST['step'] ?? '1') === '1') {
+            $selectedProfession = $profession;
+            $step = 2;
         } else {
-            $stmt = $db->prepare(
-                'UPDATE player_stats
-                 SET profession = :profession
-                 WHERE user_id = :user_id AND profession IS NULL'
-            );
-            $stmt->execute([
-                'profession' => $profession,
-                'user_id' => (int) $user['id'],
-            ]);
+            $city = isset($_POST['city']) && is_string($_POST['city']) ? $_POST['city'] : '';
+            $selectedProfession = $profession;
+            $step = 2;
 
-            redirect('./');
+            if (!in_array($city, $cities, true)) {
+                $error = 'Wybierz poprawne miasto startowe.';
+            } else {
+                $_SESSION['starting_city'] = $city;
+
+                $stmt = $db->prepare(
+                    'UPDATE player_stats
+                     SET profession = :profession
+                     WHERE user_id = :user_id AND profession IS NULL'
+                );
+                $stmt->execute([
+                    'profession' => $profession,
+                    'user_id' => (int) $user['id'],
+                ]);
+
+                redirect('./');
+            }
         }
     }
 }
@@ -65,20 +85,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         h1 { margin-top: 0; }
         .muted { color: #aaa; }
         .professions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
-        .profession { display: block; }
-        .profession input { position: absolute; opacity: 0; pointer-events: none; }
-        .profession span { display: block; padding: 18px; border: 1px solid #444; border-radius: 10px; background: #111; cursor: pointer; text-align: center; font-weight: 700; }
-        .profession input:checked + span { border-color: #fff; background: #292929; }
+        .cities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+        .profession, .city { display: block; }
+        .profession input, .city input { position: absolute; opacity: 0; pointer-events: none; }
+        .profession span, .city span { display: block; padding: 18px; border: 1px solid #444; border-radius: 10px; background: #111; cursor: pointer; text-align: center; font-weight: 700; }
+        .profession input:checked + span, .city input:checked + span { border-color: #fff; background: #292929; }
         button { width: 100%; margin-top: 24px; padding: 14px 16px; border: 0; border-radius: 8px; background: #fff; color: #111; cursor: pointer; font-weight: 700; }
         .error { padding: 12px 14px; margin-bottom: 18px; border-radius: 8px; background: #3a1717; }
-        @media (max-width: 600px) { .professions { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) { .professions, .cities { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
 <div class="wrap">
     <section class="card">
-        <h1>Wybierz profesję</h1>
-        <p class="muted">Zanim rozpoczniesz grę, wybierz kim chcesz zostać w MBZ.</p>
+        <?php if ($step === 1): ?>
+            <h1>Wybierz profesję</h1>
+            <p class="muted">Krok 1 z 2 — wybierz kim chcesz zostać w MBZ.</p>
+        <?php else: ?>
+            <h1>Wybierz miasto</h1>
+            <p class="muted">Krok 2 z 2 — wybierz miasto, w którym rozpoczniesz grę.</p>
+        <?php endif; ?>
 
         <?php if ($error !== ''): ?>
             <div class="error"><?= e($error) ?></div>
@@ -86,17 +112,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <form method="post" action="./?page=profession">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-
-            <div class="professions">
-                <?php foreach ($professions as $profession): ?>
-                    <label class="profession">
-                        <input type="radio" name="profession" value="<?= e($profession) ?>" required>
-                        <span><?= e($profession) ?></span>
-                    </label>
-                <?php endforeach; ?>
-            </div>
-
-            <button type="submit">Wybieram profesję</button>
+            <input type="hidden" name="step" value="<?= $step ?>">
+            <?php if ($step === 1): ?>
+                <div class="professions">
+                    <?php foreach ($professions as $profession): ?>
+                        <label class="profession">
+                            <input type="radio" name="profession" value="<?= e($profession) ?>" required>
+                            <span><?= e($profession) ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <button type="submit">Dalej</button>
+            <?php else: ?>
+                <input type="hidden" name="profession" value="<?= e($selectedProfession) ?>">
+                <div class="cities">
+                    <?php foreach ($cities as $city): ?>
+                        <label class="city">
+                            <input type="radio" name="city" value="<?= e($city) ?>" required>
+                            <span><?= e($city) ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <button type="submit">Rozpocznij grę</button>
+            <?php endif; ?>
         </form>
     </section>
 </div>
