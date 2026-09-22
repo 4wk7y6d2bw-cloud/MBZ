@@ -86,6 +86,27 @@ function get_player_stats(PDO $db, int $userId): ?array
     return $stats ?: null;
 }
 
+function get_player_rank(PDO $db, int $userId): ?int
+{
+    $stmt = $db->prepare('SELECT public_respect, user_id FROM player_stats WHERE user_id = :user_id LIMIT 1');
+    $stmt->execute(['user_id' => $userId]);
+    $player = $stmt->fetch();
+    if (!$player) return null;
+
+    $stmt = $db->prepare(
+        'SELECT COUNT(*) + 1
+         FROM player_stats
+         WHERE public_respect > :respect
+            OR (public_respect = :respect AND user_id < :user_id)'
+    );
+    $stmt->execute([
+        'respect' => (int) $player['public_respect'],
+        'user_id' => $userId,
+    ]);
+
+    return (int) $stmt->fetchColumn();
+}
+
 function logout_user(): void
 {
     unset($_SESSION['user']);
