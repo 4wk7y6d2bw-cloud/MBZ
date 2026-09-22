@@ -1,13 +1,23 @@
 <?php
 
-function admin_logged_in(): bool
+function user_logged_in(): bool
 {
-    return !empty($_SESSION['admin'])
-        && is_array($_SESSION['admin'])
-        && !empty($_SESSION['admin']['id']);
+    return !empty($_SESSION['user'])
+        && is_array($_SESSION['user'])
+        && !empty($_SESSION['user']['id']);
 }
 
-function admin_login(PDO $db, string $login, string $password): array
+function current_user(): ?array
+{
+    return user_logged_in() ? $_SESSION['user'] : null;
+}
+
+function current_user_is_admin(): bool
+{
+    return user_logged_in() && (int) ($_SESSION['user']['is_admin'] ?? 0) === 1;
+}
+
+function login_user(PDO $db, string $login, string $password): array
 {
     $login = trim($login);
 
@@ -16,7 +26,7 @@ function admin_login(PDO $db, string $login, string $password): array
     }
 
     $stmt = $db->prepare(
-        'SELECT id, login, password_hash, active
+        'SELECT id, login, email, password_hash, is_admin, active
          FROM users
          WHERE login = :login
          LIMIT 1'
@@ -29,17 +39,86 @@ function admin_login(PDO $db, string $login, string $password): array
     }
 
     session_regenerate_id(true);
-    $_SESSION['admin'] = [
+    $_SESSION['user'] = [
         'id' => (int) $user['id'],
         'login' => (string) $user['login'],
+        'email' => (string) $user['email'],
+        'is_admin' => (int) $user['is_admin'],
     ];
 
     return ['success' => true, 'message' => ''];
 }
 
+function register_user(PDO $db, string $login, string $email, string $password, string $passwordRepeat): array
+{
+    $login = trim($login);
+    $email = trim(mb_strtolower($email));
+
+    if ($login === '' || $email === '' || $password === '' || $passwordRepeat === '') {
+        return ['success' => false, 'message' => 'Uzupełnij wszystkie pola.'];
+    }
+
+    if (!preg_match('/^[A-Za-z0-9_]{3,24}$/', $login)) {
+        return ['success' => false, 'message' => 'Login musi mieć 3–24 znaki i może zawierać litery, cyfry oraz _.'];
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return ['success' => false, 'message' => 'Podaj poprawny adres e-mail.'];
+    }
+
+    if (strlen($password) < 8) {
+        return ['success' => false, 'message' => 'Hasło musi mieć minimum 8 znaków.'];
+    }
+
+    if ($password !== $passwordRepeat) {
+        return ['success' => false, 'message' => 'Hasła nie są identyczne.'];
+    }
+
+    $stmt = $db->prepare(
+        'SELECT id
+         FROM users
+         WHERE login = :login OR email = :email
+         LIMIT 1'
+    );
+    $stmt->execute([
+        'login' => $login,
+        'email' => $email,
+    ]);
+
+    if ($stmt->fetch()) {
+        return ['success' => false, 'message' => 'Taki login lub adres e-mail jest już zajęty.'];
+    }
+
+    $stmt = $db->prepare(
+        'INSERT INTO users (login, email, password_hash, is_admin, active, created_at)
+         VALUES (:login, :email, :password_hash, 0, 1, NOW())'
+    );
+    $stmt->execute([
+        'login' => $login,
+        'email' => $email,
+        'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+    ]);
+
+    return login_user($db, $login, $password);
+}
+
+function logout_user(): void
+{
+    unset($_SESSION['user']);
+    session_regenerate_id(true);
+}
+
+function require_login(): void
+{
+    if (!user_logged_in()) {
+        redirect('./');
+    }
+}
+
 function require_admin(): void
 {
-    if (!admin_logged_in()) {
-        redirect('./?page=admin');
+    if (!current_user_is_admin()) {
+        http_response_code(403);
+        exit('Brak uprawnień.');
     }
 }
