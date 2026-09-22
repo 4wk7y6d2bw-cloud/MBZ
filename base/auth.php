@@ -96,11 +96,12 @@ function get_player_rank(PDO $db, int $userId): ?int
     $stmt = $db->prepare(
         'SELECT COUNT(*) + 1
          FROM player_stats
-         WHERE public_respect > :respect
-            OR (public_respect = :respect AND user_id < :user_id)'
+         WHERE public_respect > :respect_above
+            OR (public_respect = :respect_equal AND user_id < :user_id)'
     );
     $stmt->execute([
-        'respect' => (int) $player['public_respect'],
+        'respect_above' => (int) $player['public_respect'],
+        'respect_equal' => (int) $player['public_respect'],
         'user_id' => $userId,
     ]);
 
