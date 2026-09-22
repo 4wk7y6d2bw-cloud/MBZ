@@ -64,7 +64,12 @@ if ($user && $db instanceof PDO) {
         .button.secondary { margin-left: 8px; background: #2a2a2a; color: #fff; }
         .error { padding: 12px 14px; border-radius: 8px; background: #3a1717; margin-bottom: 20px; }
         .muted { color: #aaa; }
-        .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+        .game-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; padding: 12px; border: 1px solid #333; border-radius: 12px; background: #181818; }
+        .game-nav a { padding: 10px 13px; border-radius: 8px; background: #242424; color: #fff; text-decoration: none; font-weight: 700; }
+        .game-nav a:hover { background: #333; }
+        .menu-toggle { display: none; width: 46px; height: 42px; padding: 8px; margin: 0; background: #242424; color: #fff; }
+        .menu-toggle span { display: block; height: 3px; margin: 4px 0; background: currentColor; border-radius: 2px; }
         .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .stat { padding: 14px; background: #111; border: 1px solid #333; border-radius: 10px; }
         .stat span { display: block; color: #aaa; font-size: 13px; margin-bottom: 5px; }
@@ -73,6 +78,10 @@ if ($user && $db instanceof PDO) {
             .auth-grid, .stats { grid-template-columns: 1fr; }
             .topbar { align-items: flex-start; flex-direction: column; }
             .button.secondary { margin-left: 0; }
+            .menu-toggle { display: block; }
+            .game-nav { display: none; flex-direction: column; width: 100%; }
+            .game-nav.open { display: flex; }
+            .game-nav a { width: 100%; }
         }
     </style>
 </head>
@@ -91,6 +100,18 @@ if ($user && $db instanceof PDO) {
             <a class="button secondary" href="./?page=logout">Wyloguj</a>
         </div>
     </div>
+
+    <button class="menu-toggle" id="menuToggle" type="button" aria-label="Otwórz menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+    </button>
+    <nav class="game-nav" id="gameNav">
+        <a href="#">Twój profil</a>
+        <a href="#">Misje</a>
+        <a href="#">Kontakty</a>
+        <a href="#">Wanted</a>
+        <a href="#">Podróż</a>
+        <a href="#">Rynek</a>
+    </nav>
 
     <section class="card">
         <h2>Statystyki postaci</h2>
@@ -162,5 +183,17 @@ if ($user && $db instanceof PDO) {
     </div>
 <?php endif; ?>
 </div>
+<?php if ($user): ?>
+<script>
+const menuToggle = document.getElementById('menuToggle');
+const gameNav = document.getElementById('gameNav');
+if (menuToggle && gameNav) {
+    menuToggle.addEventListener('click', () => {
+        const open = gameNav.classList.toggle('open');
+        menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+}
+</script>
+<?php endif; ?>
 </body>
 </html>
