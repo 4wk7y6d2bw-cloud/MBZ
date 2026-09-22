@@ -37,6 +37,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !user_logged_in()) {
 }
 
 $user = current_user();
+$stats = null;
+if ($user && $db instanceof PDO) {
+    $stats = get_player_stats($db, (int) $user['id']);
+}
 ?>
 <!doctype html>
 <html lang="pl">
@@ -58,8 +62,12 @@ $user = current_user();
         .error { padding: 12px 14px; border-radius: 8px; background: #3a1717; margin-bottom: 20px; }
         .muted { color: #aaa; }
         .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+        .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .stat { padding: 14px; background: #111; border: 1px solid #333; border-radius: 10px; }
+        .stat span { display: block; color: #aaa; font-size: 13px; margin-bottom: 5px; }
+        .stat strong { font-size: 18px; }
         @media (max-width: 720px) {
-            .auth-grid { grid-template-columns: 1fr; }
+            .auth-grid, .stats { grid-template-columns: 1fr; }
             .topbar { align-items: flex-start; flex-direction: column; }
             .button.secondary { margin-left: 0; }
         }
@@ -82,8 +90,21 @@ $user = current_user();
     </div>
 
     <section class="card">
-        <h2>Gra</h2>
-        <p>Tu będzie właściwy ekran gry dla zalogowanego użytkownika.</p>
+        <h2>Statystyki postaci</h2>
+        <?php if ($stats): ?>
+            <div class="stats">
+                <div class="stat"><span>Kasa</span><strong><?= number_format((int) $stats['cash'], 0, '.', ',') ?> $</strong></div>
+                <div class="stat"><span>Respekt</span><strong><?= (int) $stats['respect'] ?> pkt</strong></div>
+                <div class="stat"><span>Profesja</span><strong><?= $stats['profession'] === null ? 'Nie wybrano' : e($stats['profession']) ?></strong></div>
+                <div class="stat"><span>Energia</span><strong><?= (int) $stats['energy'] ?>%</strong></div>
+                <div class="stat"><span>Bilety</span><strong><?= (int) $stats['tickets'] ?>/25</strong></div>
+                <div class="stat"><span>Siła</span><strong><?= (int) $stats['strength'] ?></strong></div>
+                <div class="stat"><span>Wytrzymałość</span><strong><?= (int) $stats['endurance'] ?></strong></div>
+                <div class="stat"><span>Inteligencja</span><strong><?= (int) $stats['intelligence'] ?></strong></div>
+                <div class="stat"><span>Charyzma</span><strong><?= (int) $stats['charisma'] ?></strong></div>
+                <div class="stat"><span>Spryt</span><strong><?= (int) $stats['cunning'] ?></strong></div>
+            </div>
+        <?php endif; ?>
     </section>
 <?php else: ?>
     <h1>MBZ</h1>
