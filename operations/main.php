@@ -40,6 +40,9 @@ $user = current_user();
 $stats = null;
 if ($user && $db instanceof PDO) {
     $stats = get_player_stats($db, (int) $user['id']);
+    if ($stats && $stats['profession'] === null) {
+        redirect('./?page=profession');
+    }
 }
 ?>
 <!doctype html>
