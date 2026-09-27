@@ -129,8 +129,29 @@ function require_admin(): void
 }
 
 
+function ensure_respect_history_table(PDO $db): void
+{
+    $db->exec('CREATE TABLE IF NOT EXISTS respect_history (
+        user_id INT NOT NULL,
+        season INT NOT NULL,
+        game_day INT NOT NULL,
+        respect BIGINT NOT NULL,
+        recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, season, game_day)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+}
+
+function get_respect_history(PDO $db, int $userId, int $season): array
+{
+    $stmt = $db->prepare('SELECT game_day, respect FROM respect_history
+        WHERE user_id = :user_id AND season = :season ORDER BY game_day');
+    $stmt->execute(['user_id' => $userId, 'season' => $season]);
+    return $stmt->fetchAll();
+}
+
 function update_game_clock(PDO $db): array
 {
+    ensure_respect_history_table($db);
     $db->beginTransaction();
     try {
         $row = $db->query('SELECT * FROM game_state WHERE id = 1 FOR UPDATE')->fetch();
@@ -160,6 +181,11 @@ function update_game_clock(PDO $db): array
 
             if ($now < $next) break;
 
+            // Save the closing respect for the day that just ended.
+            $snapshot = $db->prepare('INSERT INTO respect_history (user_id, season, game_day, respect)
+                SELECT user_id, :season, :game_day, respect FROM player_stats
+                ON DUPLICATE KEY UPDATE respect = VALUES(respect), recorded_at = NOW()');
+            $snapshot->execute(['season' => (int) $row['season'], 'game_day' => (int) $row['game_day']]);
             $db->exec('UPDATE player_stats SET public_respect = respect');
 
             if ((int) $row['game_day'] >= 60) {
