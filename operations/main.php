@@ -620,7 +620,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <?php elseif ($selectedLocation === ''): ?>
     <?php
     // Approximate positions on a schematic outline of Poland; display only (travel comes later).
-    $raidCities = ['Wrocław']; // Demonstration: replace with active city raids when raid events are implemented.
+    $raidCities = ['Warszawa']; // Demonstration: replace with active city raids when raid events are implemented.
     $mapCities = [
       ['Szczecin', 105, 163], ['Gdańsk', 260, 65], ['Olsztyn', 348, 126],
       ['Białystok', 445, 184], ['Bydgoszcz', 236, 184], ['Poznań', 168, 244],
