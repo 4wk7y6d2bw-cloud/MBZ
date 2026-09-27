@@ -640,7 +640,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <g>
             <?php if ($isHere): ?><circle cx="<?= $mx ?>" cy="<?= $my ?>" r="14" fill="#ff9500" opacity=".24"/><?php endif; ?>
             <?php if ($isRaid): ?><circle class="raid-ring" cx="<?= $mx ?>" cy="<?= $my ?>" r="11" fill="none" stroke="#ff4545" stroke-width="3"/><?php endif; ?>
-            <circle <?= $isRaid ? 'class="raid-dot" style="--city-color: ' . $cityColor . '"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="<?= $isRaid ? 8 : ($isHere ? 7 : 5) ?>" fill="<?= $isRaid ? '#ff3434' : $cityColor ?>" stroke="#121820" stroke-width="2"/>
+            <circle <?= $isRaid ? 'class="raid-dot" style="--city-color: ' . $cityColor . '"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="8" fill="<?= $isRaid ? '#ff3434' : $cityColor ?>" stroke="#121820" stroke-width="2"/>
             <?php if ($isRaid): ?><title>Obława: <?= e($mapCity) ?></title><?php elseif ($isUnavailable): ?><title>Miasto niedostępne: <?= e($mapCity) ?></title><?php endif; ?>
             <text class="map-label<?= $isHere ? ' current' : '' ?>" x="<?= $mx ?>" y="<?= $my - 11 ?>" text-anchor="middle"><?= e($mapCity) ?></text>
           </g>
