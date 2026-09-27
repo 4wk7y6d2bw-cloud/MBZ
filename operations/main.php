@@ -66,6 +66,7 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
+$showWanted = isset($_GET['view']) && $_GET['view'] === 'wanted';
 $guestbookOwner = null;
 $guestbookEntries = [];
 $guestbookPage = 1;
@@ -291,7 +292,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&view=profile">Twój profil</a>
         <a href="./?page=main&view=missions">Misje</a>
         <a href="#">Kontakty</a>
-        <a href="#">Wanted</a>
+        <a href="./?page=main&amp;view=wanted">Wanted</a>
         <a href="#">Podróż</a>
         <a href="#">Rynek</a>
     </nav>
