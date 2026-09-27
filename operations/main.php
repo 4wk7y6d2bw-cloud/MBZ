@@ -369,7 +369,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         @media (prefers-reduced-motion: reduce) { .city-map .raid-dot, .city-map .raid-ring { animation: none; } }
         .city-map svg { width: 100%; max-height: 470px; display: block; margin: auto; }
         .city-map .map-label { fill: #e3e7ed; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #171a21; stroke-width: 3px; stroke-linejoin: round; }
-        .city-map .map-label.current { fill: #ffe066; font-size: 14px; }
+        .city-map .map-label.current { fill: #48d879; font-size: 14px; }
         @media (max-width: 600px) { .city-map { padding: 12px; } .city-map .map-label { font-size: 11px; } }
         .location-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
         .location-button { min-height: 92px; display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px solid #3b3b3b; border-radius: 12px; background: #181818; color: #fff; text-decoration: none; text-align: center; font-weight: 700; }
@@ -637,9 +637,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <path d="M79 139 L117 113 153 120 194 91 236 96 258 42 306 55 339 91 384 102 418 130 467 145 480 203 464 256 484 311 453 356 467 400 438 451 405 460 377 440 345 472 308 457 274 469 242 441 203 447 168 420 139 390 109 366 91 328 62 303 78 259 59 219 77 184 Z" fill="#252e38" stroke="#637589" stroke-width="3" stroke-linejoin="round"/>
         <?php foreach ($mapCities as [$mapCity, $mx, $my]): $isHere = mb_strtolower((string)($stats['current_city'] ?? '')) === mb_strtolower($mapCity); $isRaid = in_array($mapCity, $raidCities, true); ?>
           <g>
-            <?php if ($isHere): ?><circle cx="<?= $mx ?>" cy="<?= $my ?>" r="14" fill="#ffe066" opacity=".18"/><?php endif; ?>
+            <?php if ($isHere): ?><circle cx="<?= $mx ?>" cy="<?= $my ?>" r="14" fill="#48d879" opacity=".18"/><?php endif; ?>
             <?php if ($isRaid): ?><circle class="raid-ring" cx="<?= $mx ?>" cy="<?= $my ?>" r="11" fill="none" stroke="#ff4545" stroke-width="3"/><?php endif; ?>
-            <circle <?= $isRaid ? 'class="raid-dot"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="<?= $isRaid ? 8 : ($isHere ? 7 : 5) ?>" fill="<?= $isRaid ? '#ff3434' : ($isHere ? '#ffe066' : '#51a8ff') ?>" stroke="#121820" stroke-width="2"/>
+            <circle <?= $isRaid ? 'class="raid-dot"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="<?= $isRaid ? 8 : ($isHere ? 7 : 5) ?>" fill="<?= $isRaid ? '#ff3434' : ($isHere ? '#48d879' : '#51a8ff') ?>" stroke="#121820" stroke-width="2"/>
             <?php if ($isRaid): ?><title>Obława: <?= e($mapCity) ?></title><?php endif; ?>
             <text class="map-label<?= $isHere ? ' current' : '' ?>" x="<?= $mx ?>" y="<?= $my - 11 ?>" text-anchor="middle"><?= e($mapCity) ?></text>
           </g>
