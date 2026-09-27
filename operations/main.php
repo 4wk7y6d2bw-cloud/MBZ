@@ -688,7 +688,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
                 <div class="stat"><span>Respekt</span><strong><?= (int) $stats['respect'] ?> pkt</strong></div>
                 <div class="stat"><span>Miejsce</span><strong>#<?= (int) ($playerRank ?? 0) ?></strong></div>
                 <div class="stat"><span>Profesja</span><strong><?= $stats['profession'] === null ? 'Nie wybrano' : e($stats['profession']) ?></strong></div>
-                <div class="stat"><span>Obecne miasto</span><strong><?= $stats['current_city'] === null ? 'Nie wybrano' : e($stats['current_city']) ?></strong></div>
+
                 <div class="stat"><span>Energia</span><strong><?= (int) $stats['energy'] ?>%</strong></div>
                 <div class="stat"><span>Bilety</span><strong><?= (int) $stats['tickets'] ?>/25</strong></div>
                 <div class="stat"><span>Siła</span><strong><?= (int) $stats['strength'] ?></strong></div>
