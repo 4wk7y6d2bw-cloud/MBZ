@@ -429,6 +429,20 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </div>
         <?php endif; ?>
     </section>
+    <?php elseif ($showWanted): ?>
+    <section class="card location-panel">
+      <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+      <h2>Wanted — dzień <?= (int)$gameState['game_day'] ?></h2>
+      <p class="muted">Najwięcej respektu zdobytego w tym dniu gry, a nie łączny respekt postaci. Lider zmienia się na bieżąco.</p>
+      <?php if ($wantedLeader && (int)$wantedLeader['gained'] > 0): ?>
+        <div class="stat">
+          <strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$wantedLeader['id'] ?>"><?= e($wantedLeader['login']) ?></a></strong>
+          <strong>+<?= number_format((int)$wantedLeader['gained'],0,'.',' ') ?> respektu dzisiaj</strong>
+        </div>
+      <?php else: ?>
+        <p class="muted">Nikt jeszcze nie zdobył respektu dzisiaj.</p>
+      <?php endif; ?>
+    </section>
     <?php elseif ($showMissions): ?>
     <section class="card location-panel">
         <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
