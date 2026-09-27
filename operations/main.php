@@ -489,15 +489,31 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <?php elseif ($showWanted): ?>
     <section class="card location-panel">
       <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
-      <h2>Wanted — dzień <?= (int)$gameState['game_day'] ?></h2>
-      <p class="muted">Najwięcej respektu zdobytego w tym dniu gry, a nie łączny respekt postaci. Lider zmienia się na bieżąco.</p>
-      <?php if ($wantedLeader && (int)$wantedLeader['gained'] > 0): ?>
+      <h2>WANTED — dzień <?= (int)$gameState['game_day'] ?></h2>
+      <p class="muted">Cel: gracz z największym przyrostem respektu w bieżącym dniu gry.</p>
+      <?php if ($wantedMessage !== ''): ?><p class="stat"><?= e($wantedMessage) ?></p><?php endif; ?>
+      <?php if ($wantedKilled && $wantedLeader): ?>
+        <div class="stat"><strong>POSZUKIWANY ZABITY</strong><span><?= e($wantedLeader['login']) ?></span><span>Nagroda odebrana — dzisiaj nie ma kolejnego celu.</span></div>
+      <?php elseif ($wantedLeader): ?>
         <div class="stat">
           <strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$wantedLeader['id'] ?>"><?= e($wantedLeader['login']) ?></a></strong>
-          <strong>+<?= number_format((int)$wantedLeader['gained'],0,'.',' ') ?> respektu dzisiaj</strong>
+          <span>Respekt zdobyty dzisiaj: +<?= number_format((int)$wantedLeader['gained'],0,'.',' ') ?></span>
+          <strong>Nagroda: <?= number_format($wantedReward,0,'.',' ') ?> $</strong>
         </div>
+        <?php if ((int)$wantedLeader['id']===(int)$user['id']): ?>
+          <p class="muted">Nie możesz zaatakować samego siebie.</p>
+        <?php elseif ((int)$gameState['is_break']===1): ?>
+          <p class="muted">Podczas przerwy między sezonami ataki są wyłączone.</p>
+        <?php else: ?>
+          <form method="post" action="./?page=main&amp;view=wanted">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="wanted_kill">
+            <input type="hidden" name="target_id" value="<?= (int)$wantedLeader['id'] ?>">
+            <button type="submit">Zabij poszukiwanego i odbierz nagrodę</button>
+          </form>
+        <?php endif; ?>
       <?php else: ?>
-        <p class="muted">Nikt jeszcze nie zdobył respektu dzisiaj.</p>
+        <p class="muted">Nikt jeszcze nie zdobył respektu w tym dniu.</p>
       <?php endif; ?>
     </section>
     <?php elseif ($showMissions): ?>
