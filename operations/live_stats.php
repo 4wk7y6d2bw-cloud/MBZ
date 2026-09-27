@@ -29,7 +29,12 @@ try {
         $player[$field] = in_array($field, ['profession','current_city'], true)
             ? ($stats[$field] ?? null) : (int) ($stats[$field] ?? 0);
     }
-    echo json_encode(['player' => $player, 'rank' => $rank, 'game' => [
+    $version = hash('sha256', json_encode([$player, $rank, $game['game_day'], $game['season'], $game['is_break'], $game['next_ranking_update']]));
+    if (isset($_GET['version']) && is_string($_GET['version']) && hash_equals($version, $_GET['version'])) {
+        http_response_code(204);
+        return;
+    }
+    echo json_encode(['version' => $version, 'player' => $player, 'rank' => $rank, 'game' => [
         'game_day' => (int) $game['game_day'],
         'season' => (int) $game['season'],
         'is_break' => (int) $game['is_break'],
