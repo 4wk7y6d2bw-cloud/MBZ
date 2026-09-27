@@ -80,7 +80,7 @@ function register_user(PDO $db, string $login, string $email, string $password, 
 function get_player_stats(PDO $db, int $userId): ?array
 {
     ensure_player_stats($db, $userId);
-    $sync = $db->prepare('UPDATE player_stats SET respect=GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)) WHERE user_id=:user_id');
+    $sync = $db->prepare('UPDATE player_stats SET respect=GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)+FLOOR((GREATEST(0,strength-10)+GREATEST(0,endurance-10)+GREATEST(0,intelligence-10)+GREATEST(0,charisma-10)+GREATEST(0,cunning-10))/100)) WHERE user_id=:user_id');
     $sync->execute(['user_id'=>$userId]);
     $stmt = $db->prepare('SELECT * FROM player_stats WHERE user_id = :user_id LIMIT 1');
     $stmt->execute(['user_id' => $userId]);
@@ -156,7 +156,7 @@ function update_game_clock(PDO $db): array
     ensure_respect_history_table($db);
     $db->beginTransaction();
     // Cash determines respect; the starting $500 does not count.
-    $db->exec('UPDATE player_stats SET respect=GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)) WHERE respect<>GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10))');
+    $db->exec('UPDATE player_stats SET respect=GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)+FLOOR((GREATEST(0,strength-10)+GREATEST(0,endurance-10)+GREATEST(0,intelligence-10)+GREATEST(0,charisma-10)+GREATEST(0,cunning-10))/100)) WHERE respect<>GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)+FLOOR((GREATEST(0,strength-10)+GREATEST(0,endurance-10)+GREATEST(0,intelligence-10)+GREATEST(0,charisma-10)+GREATEST(0,cunning-10))/100))');
     try {
         $row = $db->query('SELECT * FROM game_state WHERE id = 1 FOR UPDATE')->fetch();
         if (!$row) throw new RuntimeException('Brak stanu gry.');
