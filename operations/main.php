@@ -95,6 +95,8 @@ if ($user && $db instanceof PDO && $showProfile) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['guestbook_add','guestbook_delete'], true)) {
             if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
                 $guestbookMessage = 'Sesja wygasła. Odśwież stronę.';
+            } elseif ($_POST['action'] === 'guestbook_add' && (int)$guestbookOwner['id'] === (int)$user['id']) {
+                $guestbookMessage = 'Nie możesz wpisywać się do własnej księgi gości.';
             } elseif ($_POST['action'] === 'guestbook_add') {
                 $body = trim((string)($_POST['body'] ?? ''));
                 if ($body === '' || mb_strlen($body) > 300) {
@@ -306,12 +308,6 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card location-panel">
         <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
         <h2><?= $guestbookOwner ? 'Profil: '.e($guestbookOwner['login']) : 'Profil gracza' ?></h2>
-        <form method="get" action="./" style="margin-bottom:16px">
-          <input type="hidden" name="page" value="main"><input type="hidden" name="view" value="profile">
-          <label for="find-player">Odwiedź księgę gości gracza (login)</label>
-          <input id="find-player" name="login" maxlength="24" placeholder="Login gracza">
-          <button type="submit">Znajdź profil</button>
-        </form>
         <?php if ($guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id'] && $stats): ?>
         <div class="stats">
             <div class="stat"><span>Login</span><strong><?= e($user['login'] ?? '') ?></strong></div>
@@ -374,6 +370,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <div id="guestbook" style="margin-top:32px">
           <h2>Księga gości</h2>
           <?php if ($guestbookMessage !== ''): ?><p><?= e($guestbookMessage) ?></p><?php endif; ?>
+          <?php if ((int)$guestbookOwner['id'] !== (int)$user['id']): ?>
           <form method="post" action="./?page=main&amp;view=profile&amp;player=<?= (int)$guestbookOwner['id'] ?>#guestbook">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="guestbook_add">
@@ -381,6 +378,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <textarea id="guestbook-body" name="body" maxlength="300" required rows="3" style="width:100%;background:#111;color:white;padding:12px;border:1px solid #555;border-radius:8px"></textarea>
             <button type="submit">Dodaj komentarz</button>
           </form>
+          <?php endif; ?>
           <?php foreach ($guestbookEntries as $entry): ?>
             <div class="mission">
               <strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$entry['author_id'] ?>#guestbook"><?= e($entry['login']) ?></a></strong>
