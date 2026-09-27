@@ -362,11 +362,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         .city-map .map-legend { display: flex; flex-wrap: wrap; gap: 15px; color: #bbb; font-size: 13px; margin: 12px 0; }
         .city-map .map-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; background: #51a8ff; }
         .city-map .map-dot.current { background: #f45454; box-shadow: 0 0 12px #f45454; }
-        .city-map .raid-dot { animation: raid-alarm 1.1s ease-in-out infinite alternate; }
         .city-map .raid-ring { animation: raid-pulse 1.2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
-        @keyframes raid-alarm { from { fill: #ff3434; filter: drop-shadow(0 0 8px #ff3434); } to { fill: var(--city-color); filter: none; } }
         @keyframes raid-pulse { from { opacity: .95; transform: scale(.6); } to { opacity: 0; transform: scale(2.2); } }
-        @media (prefers-reduced-motion: reduce) { .city-map .raid-dot, .city-map .raid-ring { animation: none; } }
+        @media (prefers-reduced-motion: reduce) { .city-map .raid-ring { animation: none; } }
         .city-map svg { width: 100%; max-height: 470px; display: block; margin: auto; }
         .city-map .map-label { fill: #e3e7ed; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #171a21; stroke-width: 3px; stroke-linejoin: round; }
         .city-map .map-label.current { fill: #31d66b; font-size: 14px; }
@@ -640,7 +638,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <g>
             <?php if ($isHere): ?><circle cx="<?= $mx ?>" cy="<?= $my ?>" r="14" fill="#31d66b" opacity=".24"/><?php endif; ?>
             <?php if ($isRaid): ?><circle class="raid-ring" cx="<?= $mx ?>" cy="<?= $my ?>" r="11" fill="none" stroke="#ff4545" stroke-width="3"/><?php endif; ?>
-            <circle <?= $isRaid ? 'class="raid-dot" style="--city-color: ' . $cityColor . '"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="8" fill="<?= $isRaid ? '#ff3434' : $cityColor ?>" stroke="#121820" stroke-width="2"/>
+            <circle cx="<?= $mx ?>" cy="<?= $my ?>" r="8" fill="<?= $cityColor ?>" stroke="#121820" stroke-width="2"/>
             <?php if ($isRaid): ?><title>Obława: <?= e($mapCity) ?></title><?php elseif ($isUnavailable): ?><title>Miasto niedostępne: <?= e($mapCity) ?></title><?php endif; ?>
             <text class="map-label<?= $isHere ? ' current' : '' ?>" x="<?= $mx ?>" y="<?= $my - 11 ?>" text-anchor="middle"><?= e($mapCity) ?></text>
           </g>
