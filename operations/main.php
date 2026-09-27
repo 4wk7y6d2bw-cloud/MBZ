@@ -618,7 +618,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <?php elseif ($selectedLocation === ''): ?>
     <?php
     // Approximate positions on a schematic outline of Poland; display only (travel comes later).
-    $raidCities = ['Wrocław', 'Szczecin', 'Kielce', 'Warszawa', 'Kraków']; // Demonstration: replace with active city raids when raid events are implemented.
+    $db->exec('CREATE TABLE IF NOT EXISTS city_raids (city VARCHAR(64) PRIMARY KEY, active TINYINT NOT NULL DEFAULT 0)');
+    $raidCities = $db->query('SELECT city FROM city_raids WHERE active=1')->fetchAll(PDO::FETCH_COLUMN);
     $unavailableCities = ['Białystok', 'Kraków']; // Map display only; travel availability will be wired separately.
     $mapCities = [
       ['Szczecin', 105, 163], ['Gdańsk', 260, 65], ['Olsztyn', 348, 126],
@@ -635,9 +636,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <svg viewBox="0 0 550 510" role="img" aria-label="Schematyczna mapa Polski z zaznaczonym aktualnym miastem i pozostałymi miastami gry">
         <path d="M79 139 L117 113 153 120 194 91 236 96 258 42 306 55 339 91 384 102 418 130 467 145 480 203 464 256 484 311 453 356 467 400 438 451 405 460 377 440 345 472 308 457 274 469 242 441 203 447 168 420 139 390 109 366 91 328 62 303 78 259 59 219 77 184 Z" fill="#252e38" stroke="#637589" stroke-width="3" stroke-linejoin="round"/>
         <?php foreach ($mapCities as [$mapCity, $mx, $my]): $isHere = mb_strtolower((string)($stats['current_city'] ?? '')) === mb_strtolower($mapCity); $isRaid = in_array($mapCity, $raidCities, true); $isUnavailable = in_array($mapCity, $unavailableCities, true); $cityColor = $isHere ? '#31d66b' : ($isUnavailable ? '#80858e' : '#51a8ff'); ?>
-          <g>
+          <g data-raid-city="<?= e($mapCity) ?>">
             <?php if ($isHere): ?><circle cx="<?= $mx ?>" cy="<?= $my ?>" r="14" fill="#31d66b" opacity=".24"/><?php endif; ?>
-            <?php if ($isRaid): ?><circle class="raid-ring" cx="<?= $mx ?>" cy="<?= $my ?>" r="11" fill="none" stroke="#ff4545" stroke-width="3"/><?php endif; ?>
+            <circle class="raid-ring" cx="<?= $mx ?>" cy="<?= $my ?>" r="11" fill="none" stroke="#ff4545" stroke-width="3" style="<?= $isRaid ? "" : "display:none" ?>"/>
             <circle cx="<?= $mx ?>" cy="<?= $my ?>" r="8" fill="<?= $cityColor ?>" stroke="#121820" stroke-width="2"/>
             <?php if ($isRaid): ?><title>Obława: <?= e($mapCity) ?></title><?php elseif ($isUnavailable): ?><title>Miasto niedostępne: <?= e($mapCity) ?></title><?php endif; ?>
             <text class="map-label<?= $isHere ? ' current' : '' ?>" x="<?= $mx ?>" y="<?= $my - 11 ?>" text-anchor="middle"><?= e($mapCity) ?></text>
@@ -645,6 +646,29 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php endforeach; ?>
       </svg>
     </section>
+    <script>
+    (() => {
+      const map = document.querySelector('.city-map');
+      if (!map) return;
+      const refresh = async () => {
+        if (document.hidden) return;
+        try {
+          const response = await fetch('./?page=raids', {cache:'no-store',credentials:'same-origin'});
+          if (!response.ok) return;
+          const data = await response.json();
+          const active = new Set(data.cities || []);
+          map.querySelectorAll('[data-raid-city]').forEach(group => {
+            const on = active.has(group.dataset.raidCity);
+            const ring = group.querySelector('.raid-ring');
+            if (ring) ring.style.display = on ? '' : 'none';
+          });
+        } catch (_) {}
+      };
+      refresh();
+      setInterval(refresh, 3000);
+      document.addEventListener('visibilitychange', refresh);
+    })();
+    </script>
     <section class="location-grid" aria-label="Lokacje gry">
         <a class="location-button <?= isset($lockedLocations['ulica']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['ulica']) ? '#' : './?page=main&amp;location=ulica' ?>"><?= isset($lockedLocations['ulica']) ? '🔒 ' : '' ?>Ulica</a>
         <a class="location-button <?= isset($lockedLocations['napad']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['napad']) ? '#' : './?page=main&amp;location=napad' ?>"><?= isset($lockedLocations['napad']) ? '🔒 ' : '' ?>Napad</a>
