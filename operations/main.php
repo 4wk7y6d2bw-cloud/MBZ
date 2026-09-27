@@ -68,27 +68,84 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $showWanted = isset($_GET['view']) && $_GET['view'] === 'wanted';
 $wantedLeader = null;
+$wantedKilled = false;
+$wantedMessage = '';
+$wantedReward = 10000;
 if ($showWanted && $user && $db instanceof PDO && $gameState) {
-    $day = (int)$gameState['game_day'];
-    $season = (int)$gameState['season'];
-    $break = (int)$gameState['is_break'] === 1;
-    if ($break) {
-        $sql = 'SELECT u.id,u.login,(h.respect-COALESCE(prev.respect,100)) AS gained
-            FROM respect_history h JOIN users u ON u.id=h.user_id
-            LEFT JOIN respect_history prev ON prev.user_id=h.user_id AND prev.season=h.season AND prev.game_day=:previous
-            WHERE h.season=:season AND h.game_day=:day AND u.active=1
-            ORDER BY gained DESC,u.id ASC LIMIT 1';
-    } else {
-        $sql = 'SELECT u.id,u.login,(p.respect-COALESCE(prev.respect,100)) AS gained
-            FROM player_stats p JOIN users u ON u.id=p.user_id
-            LEFT JOIN respect_history prev ON prev.user_id=p.user_id AND prev.season=:season AND prev.game_day=:previous
-            WHERE u.active=1 ORDER BY gained DESC,u.id ASC LIMIT 1';
+    $db->exec('CREATE TABLE IF NOT EXISTS wanted_bounties (
+        season INT NOT NULL,
+        game_day INT NOT NULL,
+        target_id INT NOT NULL,
+        reward BIGINT NOT NULL DEFAULT 10000,
+        killed_by INT DEFAULT NULL,
+        killed_at DATETIME DEFAULT NULL,
+        PRIMARY KEY (season,game_day)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    $day=(int)$gameState['game_day'];
+    $season=(int)$gameState['season'];
+    $break=(int)$gameState['is_break']===1;
+    $db->beginTransaction();
+    try {
+        $existing=$db->prepare('SELECT * FROM wanted_bounties WHERE season=? AND game_day=? FOR UPDATE');
+        $existing->execute([$season,$day]);
+        $bounty=$existing->fetch();
+        if (!$bounty || $bounty['killed_by']===null) {
+            if ($break) {
+                $leaderSql='SELECT u.id,u.login,(h.respect-COALESCE(prev.respect,100)) AS gained FROM respect_history h
+                    JOIN users u ON u.id=h.user_id AND u.active=1
+                    LEFT JOIN respect_history prev ON prev.user_id=h.user_id AND prev.season=h.season AND prev.game_day=?
+                    WHERE h.season=? AND h.game_day=? ORDER BY gained DESC,u.id ASC LIMIT 1';
+                $params=[$day-1,$season,$day];
+            } else {
+                $leaderSql='SELECT u.id,u.login,(p.respect-COALESCE(prev.respect,100)) AS gained FROM player_stats p
+                    JOIN users u ON u.id=p.user_id AND u.active=1
+                    LEFT JOIN respect_history prev ON prev.user_id=p.user_id AND prev.season=? AND prev.game_day=?
+                    ORDER BY gained DESC,u.id ASC LIMIT 1';
+                $params=[$season,$day-1];
+            }
+            $leaderQuery=$db->prepare($leaderSql);
+            $leaderQuery->execute($params);
+            $candidate=$leaderQuery->fetch();
+            if ($candidate && (int)$candidate['gained']>0) {
+                if (!$bounty) {
+                    $create=$db->prepare('INSERT INTO wanted_bounties (season,game_day,target_id,reward) VALUES (?,?,?,?)');
+                    $create->execute([$season,$day,(int)$candidate['id'],$wantedReward]);
+                } elseif ((int)$bounty['target_id']!==(int)$candidate['id']) {
+                    $change=$db->prepare('UPDATE wanted_bounties SET target_id=? WHERE season=? AND game_day=? AND killed_by IS NULL');
+                    $change->execute([(int)$candidate['id'],$season,$day]);
+                }
+                $wantedLeader=$candidate;
+            }
+        } else {
+            $dead=$db->prepare('SELECT id,login FROM users WHERE id=?');
+            $dead->execute([(int)$bounty['target_id']]);
+            $wantedLeader=$dead->fetch();
+            $wantedKilled=true;
+        }
+        if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='wanted_kill') {
+            if (!csrf_valid(is_string($_POST['csrf_token']??null)?$_POST['csrf_token']:null)) {
+                $wantedMessage='Sesja wygasła. Odśwież stronę.';
+            } elseif ($break || !$wantedLeader || $wantedKilled || (int)$wantedLeader['id']===(int)$user['id']) {
+                $wantedMessage='Tego celu nie można teraz zaatakować.';
+            } elseif ((int)($_POST['target_id']??0)!==(int)$wantedLeader['id']) {
+                $wantedMessage='Cel WANTED zmienił się. Odśwież stronę.';
+            } else {
+                $claim=$db->prepare('UPDATE wanted_bounties SET killed_by=?,killed_at=NOW() WHERE season=? AND game_day=? AND target_id=? AND killed_by IS NULL');
+                $claim->execute([(int)$user['id'],$season,$day,(int)$wantedLeader['id']]);
+                if ($claim->rowCount()===1) {
+                    $pay=$db->prepare('UPDATE player_stats SET cash=cash+? WHERE user_id=?');
+                    $pay->execute([$wantedReward,(int)$user['id']]);
+                    $wantedKilled=true;
+                    $wantedMessage='Poszukiwany zabity! Otrzymujesz '.number_format($wantedReward,0,'.',' ').' $.';
+                    $stats=get_player_stats($db,(int)$user['id']);
+                } else $wantedMessage='Nagroda została już odebrana.';
+            }
+        }
+        $db->commit();
+    } catch (Throwable $ex) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $ex;
     }
-    $query=$db->prepare($sql);
-    $params=['season'=>$season,'previous'=>$day-1];
-    if ($break) $params['day']=$day;
-    $query->execute($params);
-    $wantedLeader=$query->fetch();
 }
 $guestbookOwner = null;
 $guestbookEntries = [];
