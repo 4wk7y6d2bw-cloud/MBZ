@@ -810,7 +810,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         if (busy || document.hidden) return;
         busy = true;
         try {
-            const response = await fetch('./?page=live_stats', {credentials: 'same-origin', cache: 'no-store'});
+            const response = await fetch('./?page=live_stats' + (lastVersion ? '&version=' + encodeURIComponent(lastVersion) : ''), {credentials: 'same-origin', cache: 'no-store'});
             if (!response.ok) return;
             const data = await response.json();
             if (!data.player || data.version === lastVersion) return;
