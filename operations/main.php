@@ -357,6 +357,15 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         .menu-toggle span { display: block; height: 3px; margin: 4px 0; background: currentColor; border-radius: 2px; }
         .game-state { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
         .game-state .stat { text-align: center; }
+        .city-map { margin-bottom: 24px; padding: 22px; overflow: hidden; }
+        .city-map h2 { margin: 0 0 8px; }
+        .city-map .map-legend { display: flex; flex-wrap: wrap; gap: 15px; color: #bbb; font-size: 13px; margin: 12px 0; }
+        .city-map .map-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; background: #51a8ff; }
+        .city-map .map-dot.current { background: #f45454; box-shadow: 0 0 12px #f45454; }
+        .city-map svg { width: 100%; max-height: 470px; display: block; margin: auto; }
+        .city-map .map-label { fill: #e3e7ed; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #171a21; stroke-width: 3px; stroke-linejoin: round; }
+        .city-map .map-label.current { fill: #ff8585; font-size: 14px; }
+        @media (max-width: 600px) { .city-map { padding: 12px; } .city-map .map-label { font-size: 11px; } }
         .location-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
         .location-button { min-height: 92px; display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px solid #3b3b3b; border-radius: 12px; background: #181818; color: #fff; text-decoration: none; text-align: center; font-weight: 700; }
         .location-button:hover { background: #242424; border-color: #555; }
@@ -604,6 +613,31 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php endforeach; ?>
     </section>
     <?php elseif ($selectedLocation === ''): ?>
+    <?php
+    // Approximate positions on a schematic outline of Poland; display only (travel comes later).
+    $mapCities = [
+      ['Szczecin', 105, 163], ['Gdańsk', 260, 65], ['Olsztyn', 348, 126],
+      ['Białystok', 445, 184], ['Bydgoszcz', 236, 184], ['Poznań', 168, 244],
+      ['Warszawa', 350, 254], ['Łódź', 280, 298], ['Wrocław', 178, 352],
+      ['Lublin', 428, 330], ['Kielce', 349, 373], ['Katowice', 274, 417],
+      ['Kraków', 330, 446], ['Rzeszów', 419, 435],
+    ];
+    ?>
+    <section class="card city-map" aria-label="Mapa miast Polski">
+      <h2>Mapa Polski</h2>
+      <p class="muted">Jesteś w: <strong><?= e((string)($stats['current_city'] ?? 'Nie wybrano')) ?></strong></p>
+      <div class="map-legend"><span><i class="map-dot current"></i>Twoje miasto</span><span><i class="map-dot"></i>Inne miasta</span></div>
+      <svg viewBox="0 0 550 510" role="img" aria-label="Schematyczna mapa Polski z zaznaczonym aktualnym miastem i pozostałymi miastami gry">
+        <path d="M79 139 L117 113 153 120 194 91 236 96 258 42 306 55 339 91 384 102 418 130 467 145 480 203 464 256 484 311 453 356 467 400 438 451 405 460 377 440 345 472 308 457 274 469 242 441 203 447 168 420 139 390 109 366 91 328 62 303 78 259 59 219 77 184 Z" fill="#252e38" stroke="#637589" stroke-width="3" stroke-linejoin="round"/>
+        <?php foreach ($mapCities as [$mapCity, $mx, $my]): $isHere = mb_strtolower((string)($stats['current_city'] ?? '')) === mb_strtolower($mapCity); ?>
+          <g>
+            <?php if ($isHere): ?><circle cx="<?= $mx ?>" cy="<?= $my ?>" r="14" fill="#f45454" opacity=".18"/><?php endif; ?>
+            <circle cx="<?= $mx ?>" cy="<?= $my ?>" r="<?= $isHere ? 7 : 5 ?>" fill="<?= $isHere ? '#f45454' : '#51a8ff' ?>" stroke="#121820" stroke-width="2"/>
+            <text class="map-label<?= $isHere ? ' current' : '' ?>" x="<?= $mx ?>" y="<?= $my - 11 ?>" text-anchor="middle"><?= e($mapCity) ?></text>
+          </g>
+        <?php endforeach; ?>
+      </svg>
+    </section>
     <section class="location-grid" aria-label="Lokacje gry">
         <a class="location-button <?= isset($lockedLocations['ulica']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['ulica']) ? '#' : './?page=main&amp;location=ulica' ?>"><?= isset($lockedLocations['ulica']) ? '🔒 ' : '' ?>Ulica</a>
         <a class="location-button <?= isset($lockedLocations['napad']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['napad']) ? '#' : './?page=main&amp;location=napad' ?>"><?= isset($lockedLocations['napad']) ? '🔒 ' : '' ?>Napad</a>
