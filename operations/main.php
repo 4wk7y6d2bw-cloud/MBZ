@@ -60,6 +60,7 @@ $locationNames = [
 $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
     ? $_GET['location'] : '';
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
+$showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 ?>
 <!doctype html>
 <html lang="pl">
@@ -130,7 +131,7 @@ $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selec
         <span></span><span></span><span></span>
     </button>
     <nav class="game-nav" id="gameNav">
-        <a href="#">Twój profil</a>
+        <a href="./?page=main&view=profile">Twój profil</a>
         <a href="#">Misje</a>
         <a href="#">Kontakty</a>
         <a href="#">Wanted</a>
@@ -146,7 +147,30 @@ $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selec
     </section>
     <?php endif; ?>
 
-    <?php if ($selectedLocation === ''): ?>
+    <?php if ($showProfile): ?>
+    <section class="card location-panel">
+        <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+        <h2>Twój profil</h2>
+        <?php if ($stats): ?>
+        <div class="stats">
+            <div class="stat"><span>Login</span><strong><?= e($user['login'] ?? '') ?></strong></div>
+            <div class="stat"><span>Miejsce w rankingu</span><strong>#<?= (int) ($playerRank ?? 0) ?></strong></div>
+            <div class="stat"><span>Respekt</span><strong><?= (int) $stats['respect'] ?> pkt</strong></div>
+            <div class="stat"><span>Profesja</span><strong><?= e($stats['profession'] ?? 'Nie wybrano') ?></strong></div>
+            <div class="stat"><span>Miasto</span><strong><?= e($stats['current_city'] ?? 'Nie wybrano') ?></strong></div>
+            <div class="stat"><span>Kasa</span><strong><?= number_format((int) $stats['cash'], 0, '.', ',') ?> $</strong></div>
+            <div class="stat"><span>Energia</span><strong><?= (int) $stats['energy'] ?>%</strong></div>
+            <div class="stat"><span>Bilety</span><strong><?= (int) $stats['tickets'] ?>/25</strong></div>
+            <div class="stat"><span>Siła</span><strong><?= (int) $stats['strength'] ?></strong></div>
+            <div class="stat"><span>Wytrzymałość</span><strong><?= (int) $stats['endurance'] ?></strong></div>
+            <div class="stat"><span>Inteligencja</span><strong><?= (int) $stats['intelligence'] ?></strong></div>
+            <div class="stat"><span>Charyzma</span><strong><?= (int) $stats['charisma'] ?></strong></div>
+            <div class="stat"><span>Spryt</span><strong><?= (int) $stats['cunning'] ?></strong></div>
+            <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
+        </div>
+        <?php endif; ?>
+    </section>
+    <?php elseif ($selectedLocation === ''): ?>
     <section class="location-grid" aria-label="Lokacje gry">
         <a class="location-button" href="./?page=main&location=ulica">Ulica</a>
         <a class="location-button" href="./?page=main&location=napad">Napad</a>
@@ -176,6 +200,7 @@ $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selec
     </section>
     <?php endif; ?>
 
+    <?php if (!$showProfile): ?>
     <section class="card">
         <h2>Statystyki postaci</h2>
         <?php if ($stats): ?>
@@ -196,6 +221,7 @@ $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selec
             </div>
         <?php endif; ?>
     </section>
+    <?php endif; ?>
 <?php else: ?>
     <h1>MBZ</h1>
 
