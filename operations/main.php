@@ -71,7 +71,7 @@ $wantedLeader = null;
 $wantedKilled = false;
 $wantedMessage = '';
 $wantedReward = 0;
-$wantedRewardPerRespect = 2;
+$wantedRewardPerRespect = 0.5;
 if ($showWanted && $user && $db instanceof PDO && $gameState) {
     $db->exec('CREATE TABLE IF NOT EXISTS wanted_bounties (
         season INT NOT NULL,
