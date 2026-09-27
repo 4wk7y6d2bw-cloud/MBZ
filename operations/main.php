@@ -65,6 +65,52 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
     ? $_GET['location'] : '';
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
+$showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
+// Starter mission: reach 200 respect to unlock Skwer. Further missions can be added here.
+$missions = [
+    ['id' => 'skwer_200', 'title' => 'Pierwsze wpływy', 'description' => 'Zdobądź 200 punktów respektu.', 'target' => 200, 'location' => 'skwer', 'reward' => 'Odblokowanie lokacji: Skwer'],
+];
+$completedMissions = [];
+$missionMessage = '';
+if ($user && $db instanceof PDO) {
+    $db->exec('CREATE TABLE IF NOT EXISTS player_missions (
+        user_id INT NOT NULL, mission_id VARCHAR(64) NOT NULL,
+        completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, mission_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    $missionQuery = $db->prepare('SELECT mission_id FROM player_missions WHERE user_id = ?');
+    $missionQuery->execute([(int) $user['id']]);
+    $completedMissions = array_fill_keys($missionQuery->fetchAll(PDO::FETCH_COLUMN), true);
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'claim_mission') {
+        if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+            $missionMessage = 'Sesja wygasła. Odśwież stronę.';
+        } else {
+            $missionId = is_string($_POST['mission_id'] ?? null) ? $_POST['mission_id'] : '';
+            foreach ($missions as $mission) {
+                if ($mission['id'] === $missionId && !isset($completedMissions[$missionId])) {
+                    // Re-read server-side stats so a modified form cannot grant an unlock.
+                    $freshStats = get_player_stats($db, (int) $user['id']);
+                    if ($freshStats && (int) $freshStats['respect'] >= $mission['target']) {
+                        $claim = $db->prepare('INSERT IGNORE INTO player_missions (user_id, mission_id) VALUES (?, ?)');
+                        $claim->execute([(int) $user['id'], $missionId]);
+                        $completedMissions[$missionId] = true;
+                        $missionMessage = 'Misja ukończona! Lokacja została odblokowana.';
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+$lockedLocations = [];
+foreach ($missions as $mission) {
+    if (!isset($completedMissions[$mission['id']])) $lockedLocations[$mission['location']] = $mission['title'];
+}
+if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
+    $selectedLocation = '';
+    $showMissions = true;
+    $missionMessage = 'Najpierw ukończ misję, aby odblokować tę lokację.';
+}
 ?>
 <!doctype html>
 <html lang="pl">
@@ -102,6 +148,9 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
         .respect-chart svg { display: block; min-width: 340px; width: 100%; height: auto; }
         .history-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
         .history-table th, .history-table td { text-align: left; padding: 10px; border-bottom: 1px solid #333; }
+        .mission { padding: 18px; border: 1px solid #383838; border-radius: 12px; background: #111; margin-top: 14px; }
+        .mission progress { width: 100%; height: 16px; accent-color: #48d597; }
+        .location-button.locked { opacity: .5; border-style: dashed; }
         .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .stat { padding: 14px; background: #111; border: 1px solid #333; border-radius: 10px; }
         .stat span { display: block; color: #aaa; font-size: 13px; margin-bottom: 5px; }
@@ -140,7 +189,7 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
     </button>
     <nav class="game-nav" id="gameNav">
         <a href="./?page=main&view=profile">Twój profil</a>
-        <a href="#">Misje</a>
+        <a href="./?page=main&view=missions">Misje</a>
         <a href="#">Kontakty</a>
         <a href="#">Wanted</a>
         <a href="#">Podróż</a>
@@ -216,6 +265,37 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
             <p class="muted">Pierwszy zapis pojawi się po zakończeniu bieżącego dnia gry.</p>
         <?php endif; ?>
     </section>
+    <?php elseif ($showMissions): ?>
+    <section class="card location-panel">
+        <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+        <h2>Misje</h2>
+        <p class="muted">Wykonuj zadania, odbieraj nagrody i odblokowuj nowe lokacje.</p>
+        <?php if ($missionMessage !== ''): ?><p class="stat"><?= e($missionMessage) ?></p><?php endif; ?>
+        <?php foreach ($missions as $mission):
+            $done = isset($completedMissions[$mission['id']]);
+            $progress = min((int) ($stats['respect'] ?? 0), $mission['target']);
+        ?>
+        <article class="mission">
+            <h3><?= e($mission['title']) ?> <?= $done ? '✓' : '' ?></h3>
+            <p><?= e($mission['description']) ?></p>
+            <p class="muted">Nagroda: <?= e($mission['reward']) ?></p>
+            <progress value="<?= $progress ?>" max="<?= (int) $mission['target'] ?>"></progress>
+            <p><?= $progress ?> / <?= (int) $mission['target'] ?> respektu</p>
+            <?php if ($done): ?>
+                <strong>Ukończona — nagroda odebrana</strong>
+            <?php elseif ($progress >= $mission['target']): ?>
+                <form method="post" action="./?page=main&amp;view=missions">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="claim_mission">
+                    <input type="hidden" name="mission_id" value="<?= e($mission['id']) ?>">
+                    <button type="submit">Odbierz nagrodę</button>
+                </form>
+            <?php else: ?>
+                <p class="muted">W trakcie</p>
+            <?php endif; ?>
+        </article>
+        <?php endforeach; ?>
+    </section>
     <?php elseif ($selectedLocation === ''): ?>
     <section class="location-grid" aria-label="Lokacje gry">
         <a class="location-button" href="./?page=main&location=ulica">Ulica</a>
@@ -226,7 +306,7 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
         <a class="location-button" href="./?page=main&location=nocne-zycie">Nocne życie</a>
         <a class="location-button" href="./?page=main&location=kasyno">Kasyno</a>
         <a class="location-button" href="./?page=main&location=handel">Handel</a>
-        <a class="location-button" href="./?page=main&location=skwer">Skwer</a>
+        <a class="location-button <?= isset($lockedLocations['skwer']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['skwer']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=skwer' ?>"><?= isset($lockedLocations['skwer']) ? '🔒 ' : '' ?>Skwer</a>
 
         <a class="location-button" href="./?page=main&location=czarny-rynek">Czarny rynek</a>
         <a class="location-button" href="./?page=main&location=szpital">Szpital</a>
@@ -246,7 +326,7 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
     </section>
     <?php endif; ?>
 
-    <?php if (!$showProfile): ?>
+    <?php if (!$showProfile && !$showMissions): ?>
     <section class="card">
         <h2>Statystyki postaci</h2>
         <?php if ($stats): ?>
