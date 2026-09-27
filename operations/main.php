@@ -70,7 +70,8 @@ $showWanted = isset($_GET['view']) && $_GET['view'] === 'wanted';
 $wantedLeader = null;
 $wantedKilled = false;
 $wantedMessage = '';
-$wantedReward = 10000;
+$wantedReward = 0;
+$wantedRewardPerRespect = 10;
 if ($showWanted && $user && $db instanceof PDO && $gameState) {
     $db->exec('CREATE TABLE IF NOT EXISTS wanted_bounties (
         season INT NOT NULL,
@@ -107,12 +108,13 @@ if ($showWanted && $user && $db instanceof PDO && $gameState) {
             $leaderQuery->execute($params);
             $candidate=$leaderQuery->fetch();
             if ($candidate && (int)$candidate['gained']>0) {
+                $wantedReward = min(1000000000000, (int)$candidate['gained'] * $wantedRewardPerRespect);
                 if (!$bounty) {
                     $create=$db->prepare('INSERT INTO wanted_bounties (season,game_day,target_id,reward) VALUES (?,?,?,?)');
                     $create->execute([$season,$day,(int)$candidate['id'],$wantedReward]);
-                } elseif ((int)$bounty['target_id']!==(int)$candidate['id']) {
-                    $change=$db->prepare('UPDATE wanted_bounties SET target_id=? WHERE season=? AND game_day=? AND killed_by IS NULL');
-                    $change->execute([(int)$candidate['id'],$season,$day]);
+                } else {
+                    $change=$db->prepare('UPDATE wanted_bounties SET target_id=?,reward=? WHERE season=? AND game_day=? AND killed_by IS NULL');
+                    $change->execute([(int)$candidate['id'],$wantedReward,$season,$day]);
                 }
                 $wantedLeader=$candidate;
             }
@@ -120,6 +122,7 @@ if ($showWanted && $user && $db instanceof PDO && $gameState) {
             $dead=$db->prepare('SELECT id,login FROM users WHERE id=?');
             $dead->execute([(int)$bounty['target_id']]);
             $wantedLeader=$dead->fetch();
+            $wantedReward=(int)$bounty['reward'];
             $wantedKilled=true;
         }
         if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='wanted_kill') {
@@ -133,6 +136,9 @@ if ($showWanted && $user && $db instanceof PDO && $gameState) {
                 $claim=$db->prepare('UPDATE wanted_bounties SET killed_by=?,killed_at=NOW() WHERE season=? AND game_day=? AND target_id=? AND killed_by IS NULL');
                 $claim->execute([(int)$user['id'],$season,$day,(int)$wantedLeader['id']]);
                 if ($claim->rowCount()===1) {
+                    $rewardStmt=$db->prepare('SELECT reward FROM wanted_bounties WHERE season=? AND game_day=?');
+                    $rewardStmt->execute([$season,$day]);
+                    $wantedReward=(int)$rewardStmt->fetchColumn();
                     $pay=$db->prepare('UPDATE player_stats SET cash=cash+? WHERE user_id=?');
                     $pay->execute([$wantedReward,(int)$user['id']]);
                     $wantedKilled=true;
