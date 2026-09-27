@@ -621,6 +621,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <?php
     // Approximate positions on a schematic outline of Poland; display only (travel comes later).
     $raidCities = ['Wrocław', 'Szczecin', 'Kielce']; // Demonstration: replace with active city raids when raid events are implemented.
+    $unavailableCities = ['Białystok', 'Kraków']; // Map display only; travel availability will be wired separately.
     $mapCities = [
       ['Szczecin', 105, 163], ['Gdańsk', 260, 65], ['Olsztyn', 348, 126],
       ['Białystok', 445, 184], ['Bydgoszcz', 236, 184], ['Poznań', 168, 244],
@@ -635,12 +636,12 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
 
       <svg viewBox="0 0 550 510" role="img" aria-label="Schematyczna mapa Polski z zaznaczonym aktualnym miastem i pozostałymi miastami gry">
         <path d="M79 139 L117 113 153 120 194 91 236 96 258 42 306 55 339 91 384 102 418 130 467 145 480 203 464 256 484 311 453 356 467 400 438 451 405 460 377 440 345 472 308 457 274 469 242 441 203 447 168 420 139 390 109 366 91 328 62 303 78 259 59 219 77 184 Z" fill="#252e38" stroke="#637589" stroke-width="3" stroke-linejoin="round"/>
-        <?php foreach ($mapCities as [$mapCity, $mx, $my]): $isHere = mb_strtolower((string)($stats['current_city'] ?? '')) === mb_strtolower($mapCity); $isRaid = in_array($mapCity, $raidCities, true); ?>
+        <?php foreach ($mapCities as [$mapCity, $mx, $my]): $isHere = mb_strtolower((string)($stats['current_city'] ?? '')) === mb_strtolower($mapCity); $isRaid = in_array($mapCity, $raidCities, true); $isUnavailable = in_array($mapCity, $unavailableCities, true); ?>
           <g>
             <?php if ($isHere): ?><circle cx="<?= $mx ?>" cy="<?= $my ?>" r="14" fill="#48d879" opacity=".18"/><?php endif; ?>
             <?php if ($isRaid): ?><circle class="raid-ring" cx="<?= $mx ?>" cy="<?= $my ?>" r="11" fill="none" stroke="#ff4545" stroke-width="3"/><?php endif; ?>
-            <circle <?= $isRaid ? 'class="raid-dot"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="<?= $isRaid ? 8 : ($isHere ? 7 : 5) ?>" fill="<?= $isRaid ? '#ff3434' : ($isHere ? '#48d879' : '#51a8ff') ?>" stroke="#121820" stroke-width="2"/>
-            <?php if ($isRaid): ?><title>Obława: <?= e($mapCity) ?></title><?php endif; ?>
+            <circle <?= $isRaid ? 'class="raid-dot"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="<?= $isRaid ? 8 : ($isHere ? 7 : 5) ?>" fill="<?= $isRaid ? '#ff3434' : ($isUnavailable ? '#80858e' : ($isHere ? '#48d879' : '#51a8ff')) ?>" stroke="#121820" stroke-width="2"/>
+            <?php if ($isRaid): ?><title>Obława: <?= e($mapCity) ?></title><?php elseif ($isUnavailable): ?><title>Miasto niedostępne: <?= e($mapCity) ?></title><?php endif; ?>
             <text class="map-label<?= $isHere ? ' current' : '' ?>" x="<?= $mx ?>" y="<?= $my - 11 ?>" text-anchor="middle"><?= e($mapCity) ?></text>
           </g>
         <?php endforeach; ?>
