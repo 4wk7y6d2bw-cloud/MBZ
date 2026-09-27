@@ -121,24 +121,24 @@ if ($showWanted && $user && $db instanceof PDO && $gameState) {
         $existing->execute([$season,$day]);
         $bounty=$existing->fetch();
         if (!$bounty || $bounty['killed_by']===null) {
-            if ($break) {
-                $leaderSql='SELECT u.id,u.login,(h.respect-COALESCE(prev.respect,100)) AS gained FROM respect_history h
-                    JOIN users u ON u.id=h.user_id AND u.active=1
-                    LEFT JOIN respect_history prev ON prev.user_id=h.user_id AND prev.season=h.season AND prev.game_day=?
-                    WHERE h.season=? AND h.game_day=? ORDER BY gained DESC,u.id ASC LIMIT 1';
-                $params=[$day-1,$season,$day];
-            } else {
-                $leaderSql='SELECT u.id,u.login,(p.respect-COALESCE(prev.respect,100)) AS gained FROM player_stats p
-                    JOIN users u ON u.id=p.user_id AND u.active=1
-                    LEFT JOIN respect_history prev ON prev.user_id=p.user_id AND prev.season=? AND prev.game_day=?
-                    ORDER BY gained DESC,u.id ASC LIMIT 1';
-                $params=[$season,$day-1];
+            // WANTED uses the last CLOSED day snapshot, never live respect.
+            $targetDay = $break ? $day : $day - 1;
+            $targetSeason = $season;
+            if ($targetDay < 1) {
+                $targetSeason = $season - 1;
+                $targetDay = 60;
             }
+            $leaderSql='SELECT u.id,u.login,(h.respect-COALESCE(prev.respect,100)) AS gained FROM respect_history h
+                JOIN users u ON u.id=h.user_id AND u.active=1
+                LEFT JOIN respect_history prev ON prev.user_id=h.user_id AND prev.season=? AND prev.game_day=?
+                WHERE h.season=? AND h.game_day=?
+                ORDER BY gained DESC,u.id ASC LIMIT 1';
+            $params=[$targetSeason,$targetDay-1,$targetSeason,$targetDay];
             $leaderQuery=$db->prepare($leaderSql);
             $leaderQuery->execute($params);
             $candidate=$leaderQuery->fetch();
             if ($candidate && (int)$candidate['gained']>0) {
-                $wantedReward = min(1000000000000, (int)$candidate['gained'] * $wantedRewardPerRespect);
+                $wantedReward = (int) min(1000000000000, floor((int)$candidate['gained'] * $wantedRewardPerRespect));
                 if (!$bounty) {
                     $create=$db->prepare('INSERT INTO wanted_bounties (season,game_day,target_id,reward) VALUES (?,?,?,?)');
                     $create->execute([$season,$day,(int)$candidate['id'],$wantedReward]);
@@ -527,14 +527,14 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card location-panel">
       <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
       <h2>WANTED — dzień <?= (int)$gameState['game_day'] ?></h2>
-      <p class="muted">Cel: gracz z największym przyrostem respektu w bieżącym dniu gry.</p>
+      <p class="muted">Cel: gracz z największym przyrostem respektu w ostatnim zakończonym dniu gry. Cel nie zmienia się w trakcie dnia.</p>
       <?php if ($wantedMessage !== ''): ?><p class="stat"><?= e($wantedMessage) ?></p><?php endif; ?>
       <?php if ($wantedKilled && $wantedLeader): ?>
         <div class="stat"><strong>POSZUKIWANY ZABITY</strong><span><?= e($wantedLeader['login']) ?></span><span>Nagroda odebrana — dzisiaj nie ma kolejnego celu.</span></div>
       <?php elseif ($wantedLeader): ?>
         <div class="stat">
           <strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$wantedLeader['id'] ?>"><?= e($wantedLeader['login']) ?></a></strong>
-          <span>Respekt zdobyty dzisiaj: +<?= number_format((int)$wantedLeader['gained'],0,'.',' ') ?></span>
+          <span>Respekt zdobyty w zakończonym dniu: +<?= number_format((int)$wantedLeader['gained'],0,'.',' ') ?></span>
           <strong>Nagroda: <?= number_format($wantedReward,0,'.',' ') ?> $</strong>
         </div>
         <?php if ((int)$wantedLeader['id']===(int)$user['id']): ?>
@@ -550,7 +550,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           </form>
         <?php endif; ?>
       <?php else: ?>
-        <p class="muted">Nikt jeszcze nie zdobył respektu w tym dniu.</p>
+        <p class="muted">Brak gracza z dodatnim przyrostem respektu w ostatnim zakończonym dniu.</p>
       <?php endif; ?>
     </section>
     <?php elseif ($showMissions): ?>
