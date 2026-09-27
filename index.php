@@ -18,6 +18,7 @@ $allowedPages = [
     'main',
     'profession',
     'admin',
+    'raids',
     'logout',
     'error404',
 ];
