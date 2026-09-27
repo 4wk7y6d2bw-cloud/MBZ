@@ -4,6 +4,9 @@ require_admin();
 $user = current_user();
 $locations = ['ulica'=>'Ulica','napad'=>'Napad','gang'=>'Gang','sabotaz'=>'Sabotaż','nocne-zycie'=>'Nocne życie','kasyno'=>'Kasyno','handel'=>'Handel','skwer'=>'Skwer','czarny-rynek'=>'Czarny rynek','szpital'=>'Szpital','wiezienie'=>'Więzienie','bank'=>'Bank','policja'=>'Policja','detektyw'=>'Detektyw','transport'=>'Transport','silownia'=>'Siłownia'];
 $message = '';
+$cityNames = ['Warszawa','Kraków','Wrocław','Łódź','Poznań','Gdańsk','Szczecin','Rzeszów','Katowice','Bydgoszcz','Olsztyn','Białystok','Lublin','Kielce'];
+$db->exec('CREATE TABLE IF NOT EXISTS city_raids (city VARCHAR(64) PRIMARY KEY, active TINYINT NOT NULL DEFAULT 0)');
+$db->exec("INSERT IGNORE INTO city_raids (city,active) VALUES ('Wrocław',1),('Szczecin',1),('Kielce',1),('Warszawa',1),('Kraków',1)");
 $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY, title VARCHAR(120) NOT NULL, description TEXT NOT NULL, target INT NOT NULL, location VARCHAR(64) DEFAULT NULL, active TINYINT DEFAULT 1)');
 foreach (['reward_cash'=>'BIGINT NOT NULL DEFAULT 0','reward_strength'=>'INT NOT NULL DEFAULT 0','reward_endurance'=>'INT NOT NULL DEFAULT 0','reward_intelligence'=>'INT NOT NULL DEFAULT 0','reward_charisma'=>'INT NOT NULL DEFAULT 0','reward_cunning'=>'INT NOT NULL DEFAULT 0'] as $column=>$type) {
  if (!$db->query("SHOW COLUMNS FROM missions LIKE " . $db->quote($column))->fetch()) $db->exec("ALTER TABLE missions ADD COLUMN $column $type");
@@ -20,7 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    $action = $_POST['admin_action'] ?? '';
    $id = trim((string) ($_POST['mission_id'] ?? ''));
    $location = (string) ($_POST['location'] ?? '');
-   if ($action === 'save_mission') {
+   if ($action === 'toggle_raid' && in_array($location, $cityNames, true)) {
+     $q = $db->prepare('INSERT INTO city_raids (city,active) VALUES (?,1) ON DUPLICATE KEY UPDATE active=1-active');
+     $q->execute([$location]);
+     if (isset($_POST['ajax'])) { header('Content-Type: application/json'); echo json_encode(['ok'=>true,'active'=>(bool)$db->query('SELECT active FROM city_raids WHERE city='.$db->quote($location))->fetchColumn()]); exit; }
+     $message = 'Zmieniono status obławy.';
+   } elseif ($action === 'save_mission') {
      $title = trim((string) ($_POST['title'] ?? ''));
      $description = trim((string) ($_POST['description'] ?? ''));
      $respectInput = trim((string) ($_POST['target'] ?? ''));
@@ -55,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    }
  }
 }
+$raids = $db->query('SELECT city,active FROM city_raids')->fetchAll(PDO::FETCH_KEY_PAIR);
 $missions = $db->query('SELECT * FROM missions ORDER BY id')->fetchAll();
 $locks = $db->query('SELECT * FROM location_locks')->fetchAll(PDO::FETCH_UNIQUE);
 ?>
@@ -87,6 +96,36 @@ $locks = $db->query('SELECT * FROM location_locks')->fetchAll(PDO::FETCH_UNIQUE)
         <a class="button secondary" href="./?page=logout">Wyloguj</a>
     </section>
     <?php if ($message !== ''): ?><section class="card"><?= e($message) ?></section><?php endif; ?>
+    <section class="card"><h2>Obławy w miastach</h2><p class="muted">Zmiany pojawią się na mapach graczy automatycznie.</p>
+    <p id="raidFeedback" aria-live="polite"></p>
+    <?php foreach ($cityNames as $city): ?>
+      <form method="post" class="raid-form item">
+        <strong><?= e($city) ?></strong>
+        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+        <input type="hidden" name="admin_action" value="toggle_raid">
+        <input type="hidden" name="location" value="<?= e($city) ?>">
+        <button type="submit"><?= !empty($raids[$city]) ? 'Wyłącz obławę' : 'Włącz obławę' ?></button>
+      </form>
+    <?php endforeach; ?>
+    </section>
+    <script>
+    document.querySelectorAll('.raid-form').forEach(form => form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = form.querySelector('button');
+      button.disabled = true;
+      try {
+        const body = new FormData(form);
+        body.append('ajax', '1');
+        const response = await fetch('./?page=admin', {method:'POST', body, credentials:'same-origin'});
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error('Nie udało się zmienić obławy.');
+        button.textContent = result.active ? 'Wyłącz obławę' : 'Włącz obławę';
+        document.getElementById('raidFeedback').textContent = 'Zapisano zmianę.';
+      } catch (error) {
+        document.getElementById('raidFeedback').textContent = 'Błąd zapisu. Spróbuj ponownie.';
+      } finally { button.disabled = false; }
+    }));
+    </script>
     <section class="card"><h2>Tworzenie misji</h2>
       <form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="admin_action" value="save_mission">
         <label>Tytuł</label><input name="title" maxlength="120" required>
