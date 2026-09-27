@@ -82,7 +82,12 @@ if ($user && $db instanceof PDO && $showProfile) {
         INDEX guestbook_author_date (author_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
     $requestedId = filter_var($_GET['player'] ?? null, FILTER_VALIDATE_INT);
-    $ownerId = $requestedId && $requestedId > 0 ? $requestedId : (int)$user['id'];
+    if (isset($_GET['login']) && is_string($_GET['login']) && $_GET['login'] !== '') {
+        $lookup = $db->prepare('SELECT id FROM users WHERE login=? AND active=1 LIMIT 1');
+        $lookup->execute([trim($_GET['login'])]);
+        $requestedId = $lookup->fetchColumn() ?: -1;
+    }
+    $ownerId = $requestedId && $requestedId !== -1 ? $requestedId : ($requestedId === -1 ? -1 : (int)$user['id']);
     $ownerStmt = $db->prepare('SELECT id, login FROM users WHERE id=? AND active=1');
     $ownerStmt->execute([$ownerId]);
     $guestbookOwner = $ownerStmt->fetch();
@@ -300,7 +305,13 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <?php if ($showProfile): ?>
     <section class="card location-panel">
         <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
-        <h2><?= $guestbookOwner ? 'Profil: '.e($guestbookOwner['login']) : 'Twój profil' ?></h2>
+        <h2><?= $guestbookOwner ? 'Profil: '.e($guestbookOwner['login']) : 'Profil gracza' ?></h2>
+        <form method="get" action="./" style="margin-bottom:16px">
+          <input type="hidden" name="page" value="main"><input type="hidden" name="view" value="profile">
+          <label for="find-player">Odwiedź księgę gości gracza (login)</label>
+          <input id="find-player" name="login" maxlength="24" placeholder="Login gracza">
+          <button type="submit">Znajdź profil</button>
+        </form>
         <?php if ($guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id'] && $stats): ?>
         <div class="stats">
             <div class="stat"><span>Login</span><strong><?= e($user['login'] ?? '') ?></strong></div>
@@ -319,6 +330,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
         </div>
         <?php endif; ?>
+        <?php if ($guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id']): ?>
         <h2 style="margin-top:28px">Historia respektu — sezon <?= (int) ($gameState['season'] ?? 1) ?></h2>
         <p class="muted">Wynik zapisywany na koniec każdego dnia gry (co 4 godziny).</p>
         <?php if ($respectHistory): ?>
@@ -356,6 +368,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </tbody></table>
         <?php else: ?>
             <p class="muted">Pierwszy zapis pojawi się po zakończeniu bieżącego dnia gry.</p>
+        <?php endif; ?>
         <?php endif; ?>
         <?php if ($guestbookOwner): ?>
         <div id="guestbook" style="margin-top:32px">
