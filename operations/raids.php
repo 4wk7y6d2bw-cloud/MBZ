@@ -29,4 +29,18 @@ try {
     $db->rollBack();
     throw $e;
 }
+$db->beginTransaction();
+try {
+    $migration = 'raid_krakow_szczecin_off_warsaw_on_20260927';
+    $stmt = $db->prepare('INSERT IGNORE INTO game_migrations (name) VALUES (?)');
+    $stmt->execute([$migration]);
+    if ($stmt->rowCount() === 1) {
+        $db->exec("UPDATE city_raids SET active=0 WHERE city IN ('Kraków','Szczecin')");
+        $db->exec("INSERT INTO city_raids (city,active) VALUES ('Warszawa',1) ON DUPLICATE KEY UPDATE active=1");
+    }
+    $db->commit();
+} catch (Throwable $e) {
+    $db->rollBack();
+    throw $e;
+}
 echo json_encode(['cities' => $db->query('SELECT city FROM city_raids WHERE active=1')->fetchAll(PDO::FETCH_COLUMN)]);
