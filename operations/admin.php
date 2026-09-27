@@ -5,6 +5,8 @@ $user = current_user();
 $locations = ['ulica'=>'Ulica','napad'=>'Napad','gang'=>'Gang','sabotaz'=>'Sabotaż','nocne-zycie'=>'Nocne życie','kasyno'=>'Kasyno','handel'=>'Handel','skwer'=>'Skwer','czarny-rynek'=>'Czarny rynek','szpital'=>'Szpital','wiezienie'=>'Więzienie','bank'=>'Bank','policja'=>'Policja','detektyw'=>'Detektyw','transport'=>'Transport','silownia'=>'Siłownia'];
 $message = '';
 $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY, title VARCHAR(120) NOT NULL, description TEXT NOT NULL, target INT NOT NULL, location VARCHAR(64) DEFAULT NULL, active TINYINT DEFAULT 1)');
+$columns = $db->query("SHOW COLUMNS FROM missions LIKE 'cash_target'")->fetchAll();
+if (!$columns) $db->exec('ALTER TABLE missions ADD COLUMN cash_target BIGINT NULL');
 $db->exec('CREATE TABLE IF NOT EXISTS location_locks (location VARCHAR(64) PRIMARY KEY, mission_id VARCHAR(64) DEFAULT NULL, locked TINYINT DEFAULT 1)');
 $db->exec("INSERT IGNORE INTO missions (id,title,description,target,location) VALUES ('skwer_200','Pierwsze wpływy','Zdobądź 200 punktów respektu.',200,'skwer')");
 $db->exec("INSERT IGNORE INTO location_locks (location,mission_id) VALUES ('skwer','skwer_200')");
@@ -18,13 +20,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    if ($action === 'save_mission') {
      $title = trim((string) ($_POST['title'] ?? ''));
      $description = trim((string) ($_POST['description'] ?? ''));
-     $target = filter_var($_POST['target'] ?? null, FILTER_VALIDATE_INT);
-     if ($title === '' || mb_strlen($title) > 120 || mb_strlen($description) > 2000 || $target === false || $target < 1 || $target > 1000000000 || ($location !== '' && !isset($locations[$location]))) {
+     $respectInput = trim((string) ($_POST['target'] ?? ''));
+     $cashInput = trim((string) ($_POST['cash_target'] ?? ''));
+     $target = $respectInput === '' ? null : filter_var($respectInput, FILTER_VALIDATE_INT);
+     $cashTarget = $cashInput === '' ? null : filter_var($cashInput, FILTER_VALIDATE_INT);
+     if ($title === '' || mb_strlen($title) > 120 || mb_strlen($description) > 2000 || ($target === false || ($target !== null && ($target < 1 || $target > 1000000000))) || ($cashTarget === false || ($cashTarget !== null && ($cashTarget < 1 || $cashTarget > 1000000000000))) || ($target === null && $cashTarget === null) || ($location !== '' && !isset($locations[$location]))) {
        $message = 'Sprawdź dane misji.';
      } else {
        if ($id === '') $id = bin2hex(random_bytes(12));
-       $stmt = $db->prepare('INSERT INTO missions (id,title,description,target,location,active) VALUES (?,?,?,?,?,1) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),target=VALUES(target),location=VALUES(location)');
-       $stmt->execute([$id,$title,$description,$target,$location ?: null]);
+       $stmt = $db->prepare('INSERT INTO missions (id,title,description,target,cash_target,location,active) VALUES (?,?,?,?,?,?,1) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),target=VALUES(target),cash_target=VALUES(cash_target),location=VALUES(location)');
+       $stmt->execute([$id,$title,$description,$target,$cashTarget,$location ?: null]);
        $message = 'Misja zapisana.';
      }
    } elseif ($action === 'toggle_mission' && $id !== '') {
@@ -78,7 +83,8 @@ $locks = $db->query('SELECT * FROM location_locks')->fetchAll(PDO::FETCH_UNIQUE)
       <form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="admin_action" value="save_mission">
         <label>Tytuł</label><input name="title" maxlength="120" required>
         <label>Opis</label><textarea name="description" maxlength="2000"></textarea>
-        <label>Wymagany respekt</label><input type="number" name="target" min="1" max="1000000000" required>
+        <label>Wymagany respekt (opcjonalnie)</label><input type="number" name="target" min="1" max="1000000000" placeholder="Puste = bez wymogu">
+        <label>Wymagana gotówka na koncie (opcjonalnie)</label><input type="number" name="cash_target" min="1" max="1000000000000" placeholder="Puste = bez wymogu">
         <label>Lokacja nagrody (opcjonalnie)</label><select name="location"><option value="">Bez odblokowania</option><?php foreach ($locations as $slug=>$name): ?><option value="<?= e($slug) ?>"><?= e($name) ?></option><?php endforeach; ?></select>
         <button>Dodaj misję</button>
       </form>
@@ -88,7 +94,8 @@ $locks = $db->query('SELECT * FROM location_locks')->fetchAll(PDO::FETCH_UNIQUE)
         <form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="admin_action" value="save_mission"><input type="hidden" name="mission_id" value="<?= e($mission['id']) ?>">
           <label>Tytuł</label><input name="title" maxlength="120" value="<?= e($mission['title']) ?>" required>
           <label>Opis</label><textarea name="description" maxlength="2000"><?= e($mission['description']) ?></textarea>
-          <label>Wymagany respekt</label><input type="number" name="target" min="1" max="1000000000" value="<?= (int)$mission['target'] ?>" required>
+          <label>Wymagany respekt (opcjonalnie)</label><input type="number" name="target" min="1" max="1000000000" value="<?= $mission['target'] === null ? '' : (int)$mission['target'] ?>">
+          <label>Wymagana gotówka na koncie (opcjonalnie)</label><input type="number" name="cash_target" min="1" max="1000000000000" value="<?= $mission['cash_target'] === null ? '' : (int)$mission['cash_target'] ?>">
           <label>Odblokowanie</label><select name="location"><option value="">Brak</option><?php foreach ($locations as $slug=>$name): ?><option value="<?= e($slug) ?>" <?= $mission['location']===$slug ? 'selected' : '' ?>><?= e($name) ?></option><?php endforeach; ?></select>
           <button>Zapisz zmiany</button>
         </form>
