@@ -66,10 +66,14 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
-// Starter mission: reach 200 respect to unlock Skwer. Further missions can be added here.
-$missions = [
-    ['id' => 'skwer_200', 'title' => 'Pierwsze wpływy', 'description' => 'Zdobądź 200 punktów respektu.', 'target' => 200, 'location' => 'skwer', 'reward' => 'Odblokowanie lokacji: Skwer'],
-];
+$missions = [];
+if ($user && $db instanceof PDO) {
+ $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY,title VARCHAR(120) NOT NULL,description TEXT NOT NULL,target INT NOT NULL,location VARCHAR(64) DEFAULT NULL,active TINYINT DEFAULT 1)');
+ $db->exec('CREATE TABLE IF NOT EXISTS location_locks (location VARCHAR(64) PRIMARY KEY,mission_id VARCHAR(64) DEFAULT NULL,locked TINYINT DEFAULT 1)');
+ $db->exec("INSERT IGNORE INTO missions (id,title,description,target,location) VALUES ('skwer_200','Pierwsze wpływy','Zdobądź 200 punktów respektu.',200,'skwer')");
+ $db->exec("INSERT IGNORE INTO location_locks (location,mission_id) VALUES ('skwer','skwer_200')");
+ $missions = $db->query('SELECT * FROM missions WHERE active=1 ORDER BY id')->fetchAll();
+}
 $completedMissions = [];
 $missionMessage = '';
 if ($user && $db instanceof PDO) {
@@ -103,8 +107,13 @@ if ($user && $db instanceof PDO) {
     }
 }
 $lockedLocations = [];
-foreach ($missions as $mission) {
-    if (!isset($completedMissions[$mission['id']])) $lockedLocations[$mission['location']] = $mission['title'];
+if ($user && $db instanceof PDO) {
+ $locks = $db->query('SELECT l.location,l.mission_id,m.title FROM location_locks l LEFT JOIN missions m ON m.id=l.mission_id AND m.active=1 WHERE l.locked=1')->fetchAll();
+ foreach ($locks as $lock) {
+   if ($lock['mission_id'] === null || $lock['title'] === null || !isset($completedMissions[$lock['mission_id']])) {
+     $lockedLocations[$lock['location']] = $lock['title'] ?? 'Blokada administratora';
+   }
+ }
 }
 if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     $selectedLocation = '';
@@ -278,7 +287,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <article class="mission">
             <h3><?= e($mission['title']) ?> <?= $done ? '✓' : '' ?></h3>
             <p><?= e($mission['description']) ?></p>
-            <p class="muted">Nagroda: <?= e($mission['reward']) ?></p>
+            <p class="muted">Nagroda: <?= $mission['location'] ? 'Odblokowanie: ' . e($locationNames[$mission['location']] ?? $mission['location']) : 'Ukończenie misji' ?></p>
             <progress value="<?= $progress ?>" max="<?= (int) $mission['target'] ?>"></progress>
             <p><?= $progress ?> / <?= (int) $mission['target'] ?> respektu</p>
             <?php if ($done): ?>
@@ -298,25 +307,25 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     </section>
     <?php elseif ($selectedLocation === ''): ?>
     <section class="location-grid" aria-label="Lokacje gry">
-        <a class="location-button" href="./?page=main&location=ulica">Ulica</a>
-        <a class="location-button" href="./?page=main&location=napad">Napad</a>
-        <a class="location-button" href="./?page=main&location=gang">Gang</a>
-        <a class="location-button" href="./?page=main&location=sabotaz">Sabotaż</a>
+        <a class="location-button <?= isset($lockedLocations['ulica']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['ulica']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=ulica' ?>"><?= isset($lockedLocations['ulica']) ? '🔒 ' : '' ?>Ulica</a>
+        <a class="location-button <?= isset($lockedLocations['napad']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['napad']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=napad' ?>"><?= isset($lockedLocations['napad']) ? '🔒 ' : '' ?>Napad</a>
+        <a class="location-button <?= isset($lockedLocations['gang']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['gang']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=gang' ?>"><?= isset($lockedLocations['gang']) ? '🔒 ' : '' ?>Gang</a>
+        <a class="location-button <?= isset($lockedLocations['sabotaz']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['sabotaz']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=sabotaz' ?>"><?= isset($lockedLocations['sabotaz']) ? '🔒 ' : '' ?>Sabotaż</a>
 
-        <a class="location-button" href="./?page=main&location=nocne-zycie">Nocne życie</a>
-        <a class="location-button" href="./?page=main&location=kasyno">Kasyno</a>
-        <a class="location-button" href="./?page=main&location=handel">Handel</a>
+        <a class="location-button <?= isset($lockedLocations['nocne-zycie']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['nocne-zycie']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=nocne-zycie' ?>"><?= isset($lockedLocations['nocne-zycie']) ? '🔒 ' : '' ?>Nocne życie</a>
+        <a class="location-button <?= isset($lockedLocations['kasyno']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['kasyno']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=kasyno' ?>"><?= isset($lockedLocations['kasyno']) ? '🔒 ' : '' ?>Kasyno</a>
+        <a class="location-button <?= isset($lockedLocations['handel']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['handel']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=handel' ?>"><?= isset($lockedLocations['handel']) ? '🔒 ' : '' ?>Handel</a>
         <a class="location-button <?= isset($lockedLocations['skwer']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['skwer']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=skwer' ?>"><?= isset($lockedLocations['skwer']) ? '🔒 ' : '' ?>Skwer</a>
 
-        <a class="location-button" href="./?page=main&location=czarny-rynek">Czarny rynek</a>
-        <a class="location-button" href="./?page=main&location=szpital">Szpital</a>
-        <a class="location-button" href="./?page=main&location=wiezienie">Więzienie</a>
-        <a class="location-button" href="./?page=main&location=bank">Bank</a>
+        <a class="location-button <?= isset($lockedLocations['czarny-rynek']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['czarny-rynek']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=czarny-rynek' ?>"><?= isset($lockedLocations['czarny-rynek']) ? '🔒 ' : '' ?>Czarny rynek</a>
+        <a class="location-button <?= isset($lockedLocations['szpital']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['szpital']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=szpital' ?>"><?= isset($lockedLocations['szpital']) ? '🔒 ' : '' ?>Szpital</a>
+        <a class="location-button <?= isset($lockedLocations['wiezienie']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['wiezienie']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=wiezienie' ?>"><?= isset($lockedLocations['wiezienie']) ? '🔒 ' : '' ?>Więzienie</a>
+        <a class="location-button <?= isset($lockedLocations['bank']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['bank']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=bank' ?>"><?= isset($lockedLocations['bank']) ? '🔒 ' : '' ?>Bank</a>
 
-        <a class="location-button" href="./?page=main&location=policja">Policja</a>
-        <a class="location-button" href="./?page=main&location=detektyw">Detektyw</a>
-        <a class="location-button" href="./?page=main&location=transport">Transport</a>
-        <a class="location-button" href="./?page=main&location=silownia">Siłownia</a>
+        <a class="location-button <?= isset($lockedLocations['policja']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['policja']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=policja' ?>"><?= isset($lockedLocations['policja']) ? '🔒 ' : '' ?>Policja</a>
+        <a class="location-button <?= isset($lockedLocations['detektyw']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['detektyw']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=detektyw' ?>"><?= isset($lockedLocations['detektyw']) ? '🔒 ' : '' ?>Detektyw</a>
+        <a class="location-button <?= isset($lockedLocations['transport']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['transport']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=transport' ?>"><?= isset($lockedLocations['transport']) ? '🔒 ' : '' ?>Transport</a>
+        <a class="location-button <?= isset($lockedLocations['silownia']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['silownia']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=silownia' ?>"><?= isset($lockedLocations['silownia']) ? '🔒 ' : '' ?>Siłownia</a>
     </section>
     <?php else: ?>
     <section class="card location-panel" aria-label="Wybrana lokacja">
