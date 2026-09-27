@@ -40,10 +40,14 @@ $user = current_user();
 $stats = null;
 $gameState = null;
 $playerRank = null;
+$respectHistory = [];
 if ($user && $db instanceof PDO) {
     $gameState = update_game_clock($db);
     $stats = get_player_stats($db, (int) $user['id']);
     $playerRank = get_player_rank($db, (int) $user['id']);
+    if (isset($_GET['view']) && $_GET['view'] === 'profile' && $gameState) {
+        $respectHistory = get_respect_history($db, (int) $user['id'], (int) $gameState['season']);
+    }
     if ($stats && ($stats['profession'] === null || $stats['current_city'] === null)) {
         redirect('./?page=profession');
     }
@@ -94,6 +98,10 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
         .location-button:hover { background: #242424; border-color: #555; }
         .location-panel { min-height: 240px; margin-bottom: 24px; }
         .location-panel .back-button { margin: 0 0 22px; }
+        .respect-chart { width: 100%; overflow-x: auto; padding: 12px 0; }
+        .respect-chart svg { display: block; min-width: 340px; width: 100%; height: auto; }
+        .history-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        .history-table th, .history-table td { text-align: left; padding: 10px; border-bottom: 1px solid #333; }
         .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .stat { padding: 14px; background: #111; border: 1px solid #333; border-radius: 10px; }
         .stat span { display: block; color: #aaa; font-size: 13px; margin-bottom: 5px; }
@@ -168,6 +176,44 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
             <div class="stat"><span>Spryt</span><strong><?= (int) $stats['cunning'] ?></strong></div>
             <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
         </div>
+        <?php endif; ?>
+        <h2 style="margin-top:28px">Historia respektu — sezon <?= (int) ($gameState['season'] ?? 1) ?></h2>
+        <p class="muted">Wynik zapisywany na koniec każdego dnia gry (co 4 godziny).</p>
+        <?php if ($respectHistory): ?>
+        <?php
+            $values = array_map(static fn($item) => (int) $item['respect'], $respectHistory);
+            $low = min($values); $high = max($values);
+            $range = max(1, $high - $low);
+            $count = count($respectHistory);
+            $chartWidth = max(340, $count * 36);
+            $points = [];
+            foreach ($respectHistory as $i => $item) {
+                $x = 28 + ($count === 1 ? 0 : $i * ($chartWidth - 56) / ($count - 1));
+                $y = 160 - ((int) $item['respect'] - $low) / $range * 120;
+                $points[] = round($x, 2) . ',' . round($y, 2);
+            }
+        ?>
+        <div class="respect-chart">
+            <svg viewBox="0 0 <?= $chartWidth ?> 200" style="width:<?= $chartWidth ?>px" role="img" aria-label="Wykres historii respektu">
+                <line x1="28" y1="160" x2="<?= $chartWidth - 20 ?>" y2="160" stroke="#555"/>
+                <polyline points="<?= e(implode(' ', $points)) ?>" fill="none" stroke="#48d597" stroke-width="3" stroke-linejoin="round"/>
+                <?php foreach ($respectHistory as $i => $item):
+                    $x = 28 + ($count === 1 ? 0 : $i * ($chartWidth - 56) / ($count - 1));
+                    $y = 160 - ((int) $item['respect'] - $low) / $range * 120;
+                ?>
+                <circle cx="<?= round($x, 2) ?>" cy="<?= round($y, 2) ?>" r="4" fill="#48d597"><title>Dzień <?= (int) $item['game_day'] ?>: <?= (int) $item['respect'] ?> pkt</title></circle>
+                <text x="<?= round($x, 2) ?>" y="184" font-size="11" fill="#aaa" text-anchor="middle"><?= (int) $item['game_day'] ?></text>
+                <?php endforeach; ?>
+            </svg>
+        </div>
+        <table class="history-table"><thead><tr><th>Dzień gry</th><th>Respekt</th><th>Zmiana</th></tr></thead><tbody>
+        <?php $previous = null; foreach ($respectHistory as $entry): ?>
+            <tr><td><?= (int) $entry['game_day'] ?></td><td><?= number_format((int) $entry['respect'], 0, '.', ' ') ?></td>
+            <td><?= $previous === null ? '—' : sprintf('%+d', (int) $entry['respect'] - $previous) ?></td></tr>
+        <?php $previous = (int) $entry['respect']; endforeach; ?>
+        </tbody></table>
+        <?php else: ?>
+            <p class="muted">Pierwszy zapis pojawi się po zakończeniu bieżącego dnia gry.</p>
         <?php endif; ?>
     </section>
     <?php elseif ($selectedLocation === ''): ?>
