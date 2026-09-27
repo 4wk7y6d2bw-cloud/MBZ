@@ -6,7 +6,7 @@ $locations = ['ulica'=>'Ulica','napad'=>'Napad','gang'=>'Gang','sabotaz'=>'Sabot
 $message = '';
 $cityNames = ['Warszawa','Kraków','Wrocław','Łódź','Poznań','Gdańsk','Szczecin','Rzeszów','Katowice','Bydgoszcz','Olsztyn','Białystok','Lublin','Kielce'];
 $db->exec('CREATE TABLE IF NOT EXISTS city_raids (city VARCHAR(64) PRIMARY KEY, active TINYINT NOT NULL DEFAULT 0)');
-$db->exec("INSERT IGNORE INTO city_raids (city,active) VALUES ('Wrocław',0),('Szczecin',1),('Kielce',0),('Warszawa',0),('Kraków',1)");
+$db->exec("INSERT IGNORE INTO city_raids (city,active) VALUES ('Wrocław',0),('Szczecin',0),('Kielce',0),('Warszawa',1),('Kraków',0)");
 $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY, title VARCHAR(120) NOT NULL, description TEXT NOT NULL, target INT NOT NULL, location VARCHAR(64) DEFAULT NULL, active TINYINT DEFAULT 1)');
 foreach (['reward_cash'=>'BIGINT NOT NULL DEFAULT 0','reward_strength'=>'INT NOT NULL DEFAULT 0','reward_endurance'=>'INT NOT NULL DEFAULT 0','reward_intelligence'=>'INT NOT NULL DEFAULT 0','reward_charisma'=>'INT NOT NULL DEFAULT 0','reward_cunning'=>'INT NOT NULL DEFAULT 0'] as $column=>$type) {
  if (!$db->query("SHOW COLUMNS FROM missions LIKE " . $db->quote($column))->fetch()) $db->exec("ALTER TABLE missions ADD COLUMN $column $type");
