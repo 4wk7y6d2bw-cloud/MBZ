@@ -17,11 +17,14 @@ try {
     $game = $db->query('SELECT game_day, season, is_break, next_ranking_update FROM game_state WHERE id=1')->fetch();
     if (!$game) throw new RuntimeException('Game state missing');
     // Only regenerate the logged-in player's energy; avoid global ranking writes.
-    regenerate_player_energy($db, $userId);
     $query = $db->prepare('SELECT * FROM player_stats WHERE user_id=? LIMIT 1');
     $query->execute([$userId]);
     $stats = $query->fetch();
     if (!$stats) throw new RuntimeException('Player stats missing');
+    if ((int) $stats['energy'] < 100 && !empty($stats['energy_updated_at'])) {
+        $elapsed = max(0, time() - strtotime($stats['energy_updated_at']));
+        $stats['energy'] = min(100, (int) $stats['energy'] + intdiv($elapsed, 60) * 2);
+    }
     $rank = get_player_rank($db, $userId);
     $fields = ['cash','credits','respect','public_respect','energy','tickets','strength','endurance','intelligence','charisma','cunning','profession','current_city'];
     $player = [];
