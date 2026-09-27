@@ -67,6 +67,29 @@ $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selec
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $showWanted = isset($_GET['view']) && $_GET['view'] === 'wanted';
+$wantedLeader = null;
+if ($showWanted && $user && $db instanceof PDO && $gameState) {
+    $day = (int)$gameState['game_day'];
+    $season = (int)$gameState['season'];
+    $break = (int)$gameState['is_break'] === 1;
+    if ($break) {
+        $sql = 'SELECT u.id,u.login,(h.respect-COALESCE(prev.respect,100)) AS gained
+            FROM respect_history h JOIN users u ON u.id=h.user_id
+            LEFT JOIN respect_history prev ON prev.user_id=h.user_id AND prev.season=h.season AND prev.game_day=:previous
+            WHERE h.season=:season AND h.game_day=:day AND u.active=1
+            ORDER BY gained DESC,u.id ASC LIMIT 1';
+    } else {
+        $sql = 'SELECT u.id,u.login,(p.respect-COALESCE(prev.respect,100)) AS gained
+            FROM player_stats p JOIN users u ON u.id=p.user_id
+            LEFT JOIN respect_history prev ON prev.user_id=p.user_id AND prev.season=:season AND prev.game_day=:previous
+            WHERE u.active=1 ORDER BY gained DESC,u.id ASC LIMIT 1';
+    }
+    $query=$db->prepare($sql);
+    $params=['season'=>$season,'previous'=>$day-1];
+    if ($break) $params['day']=$day;
+    $query->execute($params);
+    $wantedLeader=$query->fetch();
+}
 $guestbookOwner = null;
 $guestbookEntries = [];
 $guestbookPage = 1;
