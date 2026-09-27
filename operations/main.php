@@ -315,7 +315,16 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <?php
             $rewards = [];
             if ($mission['location']) $rewards[] = 'Odblokowanie: ' . ($locationNames[$mission['location']] ?? $mission['location']);
-            foreach (['reward_cash'=>'            <?php if ($mission['target'] !== null): ?>
+            if ((int)$mission['reward_cash'] > 0) $rewards[] = '+' . (int)$mission['reward_cash'] . ' USD';
+            if ((int)$mission['reward_strength'] > 0) $rewards[] = '+' . (int)$mission['reward_strength'] . ' siły';
+            if ((int)$mission['reward_endurance'] > 0) $rewards[] = '+' . (int)$mission['reward_endurance'] . ' wytrzymałości';
+            if ((int)$mission['reward_intelligence'] > 0) $rewards[] = '+' . (int)$mission['reward_intelligence'] . ' inteligencji';
+            if ((int)$mission['reward_charisma'] > 0) $rewards[] = '+' . (int)$mission['reward_charisma'] . ' charyzmy';
+            if ((int)$mission['reward_cunning'] > 0) $rewards[] = '+' . (int)$mission['reward_cunning'] . ' sprytu';
+            echo e($rewards ? implode(', ', $rewards) : 'Ukończenie misji');
+            ?>
+            </p>
+            <?php if ($mission['target'] !== null): ?>
             <p>Respekt: <?= min((int)($stats['respect'] ?? 0), (int)$mission['target']) ?> / <?= (int)$mission['target'] ?></p>
             <progress value="<?= min((int)($stats['respect'] ?? 0), (int)$mission['target']) ?>" max="<?= (int)$mission['target'] ?>"></progress>
             <?php endif; ?>
