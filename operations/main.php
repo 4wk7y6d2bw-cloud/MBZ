@@ -73,6 +73,7 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
     } else {
         $db->beginTransaction();
         try {
+            regenerate_player_energy($db, (int)$user['id']);
             $lock = $db->prepare('SELECT energy FROM player_stats WHERE user_id=? FOR UPDATE');
             $lock->execute([(int)$user['id']]);
             $currentEnergy = $lock->fetchColumn();
