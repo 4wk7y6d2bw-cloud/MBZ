@@ -5,6 +5,9 @@ $user = current_user();
 $locations = ['ulica'=>'Ulica','napad'=>'Napad','gang'=>'Gang','sabotaz'=>'Sabotaż','nocne-zycie'=>'Nocne życie','kasyno'=>'Kasyno','handel'=>'Handel','skwer'=>'Skwer','czarny-rynek'=>'Czarny rynek','szpital'=>'Szpital','wiezienie'=>'Więzienie','bank'=>'Bank','policja'=>'Policja','detektyw'=>'Detektyw','transport'=>'Transport','silownia'=>'Siłownia'];
 $message = '';
 $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY, title VARCHAR(120) NOT NULL, description TEXT NOT NULL, target INT NOT NULL, location VARCHAR(64) DEFAULT NULL, active TINYINT DEFAULT 1)');
+foreach (['reward_cash'=>'BIGINT NOT NULL DEFAULT 0','reward_strength'=>'INT NOT NULL DEFAULT 0','reward_endurance'=>'INT NOT NULL DEFAULT 0','reward_intelligence'=>'INT NOT NULL DEFAULT 0','reward_charisma'=>'INT NOT NULL DEFAULT 0','reward_cunning'=>'INT NOT NULL DEFAULT 0'] as $column=>$type) {
+ if (!$db->query("SHOW COLUMNS FROM missions LIKE " . $db->quote($column))->fetch()) $db->exec("ALTER TABLE missions ADD COLUMN $column $type");
+}
 $columns = $db->query("SHOW COLUMNS FROM missions LIKE 'cash_target'")->fetchAll();
 if (!$columns) $db->exec('ALTER TABLE missions ADD COLUMN cash_target BIGINT NULL');
 $db->exec('CREATE TABLE IF NOT EXISTS location_locks (location VARCHAR(64) PRIMARY KEY, mission_id VARCHAR(64) DEFAULT NULL, locked TINYINT DEFAULT 1)');
@@ -22,14 +25,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
      $description = trim((string) ($_POST['description'] ?? ''));
      $respectInput = trim((string) ($_POST['target'] ?? ''));
      $cashInput = trim((string) ($_POST['cash_target'] ?? ''));
+     $rewards = [];
+     foreach (['reward_cash'=>1000000000000,'reward_strength'=>100000,'reward_endurance'=>100000,'reward_intelligence'=>100000,'reward_charisma'=>100000,'reward_cunning'=>100000] as $field=>$limit) {
+       $value = filter_var($_POST[$field] ?? '0', FILTER_VALIDATE_INT);
+       $rewards[$field] = $value !== false && $value >= 0 && $value <= $limit ? $value : null;
+     }
      $target = $respectInput === '' ? null : filter_var($respectInput, FILTER_VALIDATE_INT);
      $cashTarget = $cashInput === '' ? null : filter_var($cashInput, FILTER_VALIDATE_INT);
-     if ($title === '' || mb_strlen($title) > 120 || mb_strlen($description) > 2000 || ($target === false || ($target !== null && ($target < 1 || $target > 1000000000))) || ($cashTarget === false || ($cashTarget !== null && ($cashTarget < 1 || $cashTarget > 1000000000000))) || ($target === null && $cashTarget === null) || ($location !== '' && !isset($locations[$location]))) {
+     if (in_array(null, $rewards, true) || $title === '' || mb_strlen($title) > 120 || mb_strlen($description) > 2000 || ($target === false || ($target !== null && ($target < 1 || $target > 1000000000))) || ($cashTarget === false || ($cashTarget !== null && ($cashTarget < 1 || $cashTarget > 1000000000000))) || ($target === null && $cashTarget === null) || ($location !== '' && !isset($locations[$location]))) {
        $message = 'Sprawdź dane misji.';
      } else {
        if ($id === '') $id = bin2hex(random_bytes(12));
-       $stmt = $db->prepare('INSERT INTO missions (id,title,description,target,cash_target,location,active) VALUES (?,?,?,?,?,?,1) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),target=VALUES(target),cash_target=VALUES(cash_target),location=VALUES(location)');
-       $stmt->execute([$id,$title,$description,$target,$cashTarget,$location ?: null]);
+       $stmt = $db->prepare('INSERT INTO missions (id,title,description,target,cash_target,location,reward_cash,reward_strength,reward_endurance,reward_intelligence,reward_charisma,reward_cunning,active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),target=VALUES(target),cash_target=VALUES(cash_target),location=VALUES(location),reward_cash=VALUES(reward_cash),reward_strength=VALUES(reward_strength),reward_endurance=VALUES(reward_endurance),reward_intelligence=VALUES(reward_intelligence),reward_charisma=VALUES(reward_charisma),reward_cunning=VALUES(reward_cunning)');
+       $stmt->execute(array_merge([$id,$title,$description,$target,$cashTarget,$location ?: null],array_values($rewards)));
        $message = 'Misja zapisana.';
      }
    } elseif ($action === 'toggle_mission' && $id !== '') {
@@ -86,6 +94,10 @@ $locks = $db->query('SELECT * FROM location_locks')->fetchAll(PDO::FETCH_UNIQUE)
         <label>Wymagany respekt (opcjonalnie)</label><input type="number" name="target" min="1" max="1000000000" placeholder="Puste = bez wymogu">
         <label>Wymagana gotówka na koncie (opcjonalnie)</label><input type="number" name="cash_target" min="1" max="1000000000000" placeholder="Puste = bez wymogu">
         <label>Lokacja nagrody (opcjonalnie)</label><select name="location"><option value="">Bez odblokowania</option><?php foreach ($locations as $slug=>$name): ?><option value="<?= e($slug) ?>"><?= e($name) ?></option><?php endforeach; ?></select>
+<h3>Nagrody (0 = brak)</h3>
+<?php foreach (['reward_cash'=>'Gotówka ($)','reward_strength'=>'Siła','reward_endurance'=>'Wytrzymałość','reward_intelligence'=>'Inteligencja','reward_charisma'=>'Charyzma','reward_cunning'=>'Spryt'] as $field=>$label): ?>
+<label><?= e($label) ?></label><input type="number" name="<?= e($field) ?>" min="0" max="<?= $field==='reward_cash' ? '1000000000000' : '100000' ?>" value="<?= isset($mission) ? (int)$mission[$field] : 0 ?>">
+<?php endforeach; ?>
         <button>Dodaj misję</button>
       </form>
       <h2>Istniejące misje</h2>
@@ -97,6 +109,10 @@ $locks = $db->query('SELECT * FROM location_locks')->fetchAll(PDO::FETCH_UNIQUE)
           <label>Wymagany respekt (opcjonalnie)</label><input type="number" name="target" min="1" max="1000000000" value="<?= $mission['target'] === null ? '' : (int)$mission['target'] ?>">
           <label>Wymagana gotówka na koncie (opcjonalnie)</label><input type="number" name="cash_target" min="1" max="1000000000000" value="<?= $mission['cash_target'] === null ? '' : (int)$mission['cash_target'] ?>">
           <label>Odblokowanie</label><select name="location"><option value="">Brak</option><?php foreach ($locations as $slug=>$name): ?><option value="<?= e($slug) ?>" <?= $mission['location']===$slug ? 'selected' : '' ?>><?= e($name) ?></option><?php endforeach; ?></select>
+<h3>Nagrody (0 = brak)</h3>
+<?php foreach (['reward_cash'=>'Gotówka ($)','reward_strength'=>'Siła','reward_endurance'=>'Wytrzymałość','reward_intelligence'=>'Inteligencja','reward_charisma'=>'Charyzma','reward_cunning'=>'Spryt'] as $field=>$label): ?>
+<label><?= e($label) ?></label><input type="number" name="<?= e($field) ?>" min="0" max="<?= $field==='reward_cash' ? '1000000000000' : '100000' ?>" value="<?= isset($mission) ? (int)$mission[$field] : 0 ?>">
+<?php endforeach; ?>
           <button>Zapisz zmiany</button>
         </form>
         <form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="admin_action" value="toggle_mission"><input type="hidden" name="mission_id" value="<?= e($mission['id']) ?>"><button><?= $mission['active'] ? 'Wyłącz misję' : 'Włącz misję' ?></button></form>
