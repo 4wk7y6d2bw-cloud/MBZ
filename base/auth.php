@@ -77,9 +77,38 @@ function register_user(PDO $db, string $login, string $email, string $password, 
     return login_user($db, $login, $password);
 }
 
+function regenerate_player_energy(PDO $db, int $userId): void
+{
+    // The column is created once by the deploy migration; this fallback also supports existing installs.
+    static $columnChecked = false;
+    if (!$columnChecked) {
+        $column = $db->query("SHOW COLUMNS FROM player_stats LIKE 'energy_updated_at'")->fetch();
+        if (!$column) {
+            $db->exec("ALTER TABLE player_stats ADD COLUMN energy_updated_at DATETIME NULL DEFAULT NULL");
+        }
+        $columnChecked = true;
+    }
+
+    // Atomic update: elapsed full minutes are consumed exactly once, even on simultaneous requests.
+    $stmt = $db->prepare("UPDATE player_stats SET
+        energy_updated_at = CASE
+            WHEN energy >= 100 THEN NOW()
+            WHEN energy_updated_at IS NULL THEN NOW()
+            ELSE DATE_ADD(energy_updated_at, INTERVAL
+                (TIMESTAMPDIFF(SECOND, energy_updated_at, NOW()) DIV 60) MINUTE)
+        END,
+        energy = LEAST(100, energy + CASE
+            WHEN energy >= 100 OR energy_updated_at IS NULL THEN 0
+            ELSE GREATEST(0, TIMESTAMPDIFF(SECOND, energy_updated_at, NOW()) DIV 60) * 2
+        END)
+        WHERE user_id = ?");
+    $stmt->execute([$userId]);
+}
+
 function get_player_stats(PDO $db, int $userId): ?array
 {
     ensure_player_stats($db, $userId);
+    regenerate_player_energy($db, $userId);
     $sync = $db->prepare('UPDATE player_stats SET respect=GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)+FLOOR((GREATEST(0,strength-10)+GREATEST(0,endurance-10)+GREATEST(0,intelligence-10)+GREATEST(0,charisma-10)+GREATEST(0,cunning-10))/20)) WHERE user_id=:user_id');
     $sync->execute(['user_id'=>$userId]);
     $stmt = $db->prepare('SELECT * FROM player_stats WHERE user_id = :user_id LIMIT 1');
