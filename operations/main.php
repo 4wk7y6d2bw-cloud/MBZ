@@ -626,7 +626,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card city-map" aria-label="Mapa miast Polski">
       <h2>Mapa Polski</h2>
       <p class="muted">Jesteś w: <strong><?= e((string)($stats['current_city'] ?? 'Nie wybrano')) ?></strong></p>
-      <div class="map-legend"><span><i class="map-dot current"></i>Twoje miasto</span><span><i class="map-dot"></i>Inne miasta</span></div>
+
       <svg viewBox="0 0 550 510" role="img" aria-label="Schematyczna mapa Polski z zaznaczonym aktualnym miastem i pozostałymi miastami gry">
         <path d="M79 139 L117 113 153 120 194 91 236 96 258 42 306 55 339 91 384 102 418 130 467 145 480 203 464 256 484 311 453 356 467 400 438 451 405 460 377 440 345 472 308 457 274 469 242 441 203 447 168 420 139 390 109 366 91 328 62 303 78 259 59 219 77 184 Z" fill="#252e38" stroke="#637589" stroke-width="3" stroke-linejoin="round"/>
         <?php foreach ($mapCities as [$mapCity, $mx, $my]): $isHere = mb_strtolower((string)($stats['current_city'] ?? '')) === mb_strtolower($mapCity); ?>
