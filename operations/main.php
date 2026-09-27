@@ -867,7 +867,7 @@ if (menuToggle && gameNav) {
             busy = false;
         }
     };
-    setInterval(refreshStats, 5000);
+    setInterval(refreshStats, 15000);
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) refreshStats();
     });
