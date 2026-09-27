@@ -48,6 +48,18 @@ if ($user && $db instanceof PDO) {
         redirect('./?page=profession');
     }
 }
+$locationNames = [
+    'ulica' => 'Ulica', 'napad' => 'Napad', 'gang' => 'Gang',
+    'sabotaz' => 'Sabotaż', 'nocne-zycie' => 'Nocne życie',
+    'kasyno' => 'Kasyno', 'handel' => 'Handel', 'skwer' => 'Skwer',
+    'czarny-rynek' => 'Czarny rynek', 'szpital' => 'Szpital',
+    'wiezienie' => 'Więzienie', 'bank' => 'Bank',
+    'policja' => 'Policja', 'detektyw' => 'Detektyw',
+    'transport' => 'Transport', 'silownia' => 'Siłownia',
+];
+$selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
+    ? $_GET['location'] : '';
+$selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 ?>
 <!doctype html>
 <html lang="pl">
@@ -79,6 +91,8 @@ if ($user && $db instanceof PDO) {
         .location-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
         .location-button { min-height: 92px; display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px solid #3b3b3b; border-radius: 12px; background: #181818; color: #fff; text-decoration: none; text-align: center; font-weight: 700; }
         .location-button:hover { background: #242424; border-color: #555; }
+        .location-panel { min-height: 240px; margin-bottom: 24px; }
+        .location-panel .back-button { margin: 0 0 22px; }
         .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .stat { padding: 14px; background: #111; border: 1px solid #333; border-radius: 10px; }
         .stat span { display: block; color: #aaa; font-size: 13px; margin-bottom: 5px; }
@@ -132,6 +146,7 @@ if ($user && $db instanceof PDO) {
     </section>
     <?php endif; ?>
 
+    <?php if ($selectedLocation === ''): ?>
     <section class="location-grid" aria-label="Lokacje gry">
         <a class="location-button" href="./?page=main&location=ulica">Ulica</a>
         <a class="location-button" href="./?page=main&location=napad">Napad</a>
@@ -153,6 +168,13 @@ if ($user && $db instanceof PDO) {
         <a class="location-button" href="./?page=main&location=transport">Transport</a>
         <a class="location-button" href="./?page=main&location=silownia">Siłownia</a>
     </section>
+    <?php else: ?>
+    <section class="card location-panel" aria-label="Wybrana lokacja">
+        <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+        <h2><?= e($locationNames[$selectedLocation]) ?></h2>
+        <p class="muted">Tutaj pojawią się informacje i dostępne akcje tej lokacji.</p>
+    </section>
+    <?php endif; ?>
 
     <section class="card">
         <h2>Statystyki postaci</h2>
