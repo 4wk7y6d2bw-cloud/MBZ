@@ -68,7 +68,7 @@ $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $missions = [];
 if ($user && $db instanceof PDO) {
- $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY,title VARCHAR(120) NOT NULL,description TEXT NOT NULL,target INT NOT NULL,location VARCHAR(64) DEFAULT NULL,active TINYINT DEFAULT 1)');
+ $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY,title VARCHAR(120) NOT NULL,description TEXT NOT NULL,target INT NULL,location VARCHAR(64) DEFAULT NULL,active TINYINT DEFAULT 1)');
  foreach (['reward_cash'=>'BIGINT NOT NULL DEFAULT 0','reward_strength'=>'INT NOT NULL DEFAULT 0','reward_endurance'=>'INT NOT NULL DEFAULT 0','reward_intelligence'=>'INT NOT NULL DEFAULT 0','reward_charisma'=>'INT NOT NULL DEFAULT 0','reward_cunning'=>'INT NOT NULL DEFAULT 0'] as $column=>$type) {
   if (!$db->query("SHOW COLUMNS FROM missions LIKE " . $db->quote($column))->fetch()) $db->exec("ALTER TABLE missions ADD COLUMN $column $type");
  }
