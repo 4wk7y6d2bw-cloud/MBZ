@@ -366,9 +366,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         @keyframes raid-pulse { from { opacity: .95; transform: scale(.6); } to { opacity: 0; transform: scale(2.2); } }
         @media (prefers-reduced-motion: reduce) { .city-map .raid-ring { animation: none; } }
         .city-map svg { width: 100%; max-height: 470px; display: block; margin: auto; }
-        .city-map .map-label { fill: #e3e7ed; font-size: 12px; font-weight: 700; paint-order: stroke; stroke: #171a21; stroke-width: 3px; stroke-linejoin: round; }
-        .city-map .map-label.current { fill: #ffd400; font-size: 14px; }
-        @media (max-width: 600px) { .city-map { padding: 12px; } .city-map .map-label { font-size: 11px; } }
+        .city-map .map-label { fill: #e3e7ed; font-size: 14px; font-weight: 700; paint-order: stroke; stroke: #171a21; stroke-width: 3px; stroke-linejoin: round; }
+        .city-map .map-label.current { fill: #ffd400; }
+        @media (max-width: 600px) { .city-map { padding: 12px; } .city-map .map-label { font-size: 14px; } }
         .location-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
         .location-button { min-height: 92px; display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px solid #3b3b3b; border-radius: 12px; background: #181818; color: #fff; text-decoration: none; text-align: center; font-weight: 700; }
         .location-button:hover { background: #242424; border-color: #555; }
