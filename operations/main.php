@@ -69,6 +69,9 @@ $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $missions = [];
 if ($user && $db instanceof PDO) {
  $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY,title VARCHAR(120) NOT NULL,description TEXT NOT NULL,target INT NOT NULL,location VARCHAR(64) DEFAULT NULL,active TINYINT DEFAULT 1)');
+ foreach (['reward_cash'=>'BIGINT NOT NULL DEFAULT 0','reward_strength'=>'INT NOT NULL DEFAULT 0','reward_endurance'=>'INT NOT NULL DEFAULT 0','reward_intelligence'=>'INT NOT NULL DEFAULT 0','reward_charisma'=>'INT NOT NULL DEFAULT 0','reward_cunning'=>'INT NOT NULL DEFAULT 0'] as $column=>$type) {
+  if (!$db->query("SHOW COLUMNS FROM missions LIKE " . $db->quote($column))->fetch()) $db->exec("ALTER TABLE missions ADD COLUMN $column $type");
+ }
  $cashColumn = $db->query("SHOW COLUMNS FROM missions LIKE 'cash_target'")->fetch();
  if (!$cashColumn) $db->exec('ALTER TABLE missions ADD COLUMN cash_target BIGINT NULL');
  $db->exec('CREATE TABLE IF NOT EXISTS location_locks (location VARCHAR(64) PRIMARY KEY,mission_id VARCHAR(64) DEFAULT NULL,locked TINYINT DEFAULT 1)');
@@ -94,15 +97,31 @@ if ($user && $db instanceof PDO) {
             $missionId = is_string($_POST['mission_id'] ?? null) ? $_POST['mission_id'] : '';
             foreach ($missions as $mission) {
                 if ($mission['id'] === $missionId && !isset($completedMissions[$missionId])) {
-                    // Re-read server-side stats so a modified form cannot grant an unlock.
-                    $freshStats = get_player_stats($db, (int) $user['id']);
-                    if ($freshStats
-                        && ($mission['target'] === null || (int) $freshStats['respect'] >= (int) $mission['target'])
-                        && ($mission['cash_target'] === null || (int) $freshStats['cash'] >= (int) $mission['cash_target'])) {
-                        $claim = $db->prepare('INSERT IGNORE INTO player_missions (user_id, mission_id) VALUES (?, ?)');
-                        $claim->execute([(int) $user['id'], $missionId]);
-                        $completedMissions[$missionId] = true;
-                        $missionMessage = 'Misja ukończona! Lokacja została odblokowana.';
+                    // Claim and award in one transaction, locked per player to prevent duplicate rewards.
+                    $db->beginTransaction();
+                    try {
+                        $lock = $db->prepare('SELECT * FROM player_stats WHERE user_id=? FOR UPDATE');
+                        $lock->execute([(int)$user['id']]);
+                        $freshStats = $lock->fetch();
+                        $already = $db->prepare('SELECT 1 FROM player_missions WHERE user_id=? AND mission_id=?');
+                        $already->execute([(int)$user['id'],$missionId]);
+                        if ($freshStats && !$already->fetchColumn()
+                            && ($mission['target'] === null || (int)$freshStats['respect'] >= (int)$mission['target'])
+                            && ($mission['cash_target'] === null || (int)$freshStats['cash'] >= (int)$mission['cash_target'])) {
+                            $claim = $db->prepare('INSERT INTO player_missions (user_id,mission_id) VALUES (?,?)');
+                            $claim->execute([(int)$user['id'],$missionId]);
+                            $award = $db->prepare('UPDATE player_stats SET cash=cash+?,strength=strength+?,endurance=endurance+?,intelligence=intelligence+?,charisma=charisma+?,cunning=cunning+? WHERE user_id=?');
+                            $award->execute([(int)$mission['reward_cash'],(int)$mission['reward_strength'],(int)$mission['reward_endurance'],(int)$mission['reward_intelligence'],(int)$mission['reward_charisma'],(int)$mission['reward_cunning'],(int)$user['id']]);
+                            $completedMissions[$missionId] = true;
+                            $stats = get_player_stats($db,(int)$user['id']);
+                            $missionMessage = 'Misja ukończona! Nagrody odebrane.';
+                        } else {
+                            $missionMessage = 'Misja została już odebrana lub nie spełniasz wymagań.';
+                        }
+                        $db->commit();
+                    } catch (Throwable $ex) {
+                        if ($db->inTransaction()) $db->rollBack();
+                        throw $ex;
                     }
                     break;
                 }
@@ -292,7 +311,173 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <article class="mission">
             <h3><?= e($mission['title']) ?> <?= $done ? '✓' : '' ?></h3>
             <p><?= e($mission['description']) ?></p>
-            <p class="muted">Nagroda: <?= $mission['location'] ? 'Odblokowanie: ' . e($locationNames[$mission['location']] ?? $mission['location']) : 'Ukończenie misji' ?></p>
+            <p class="muted">Nagrody:
+            <?php
+            $rewards = [];
+            if ($mission['location']) $rewards[] = 'Odblokowanie: ' . ($locationNames[$mission['location']] ?? $mission['location']);
+            foreach (['reward_cash'=>'
+            <?php if ($mission['target'] !== null): ?>
+            <p>Respekt: <?= min((int)($stats['respect'] ?? 0), (int)$mission['target']) ?> / <?= (int)$mission['target'] ?></p>
+            <progress value="<?= min((int)($stats['respect'] ?? 0), (int)$mission['target']) ?>" max="<?= (int)$mission['target'] ?>"></progress>
+            <?php endif; ?>
+            <?php if ($mission['cash_target'] !== null): ?>
+            <p>Gotówka na koncie: <?= number_format(min((int)($stats['cash'] ?? 0), (int)$mission['cash_target']), 0, '.', ' ') ?> / <?= number_format((int)$mission['cash_target'], 0, '.', ' ') ?> $</p>
+            <progress value="<?= min((int)($stats['cash'] ?? 0), (int)$mission['cash_target']) ?>" max="<?= (int)$mission['cash_target'] ?>"></progress>
+            <?php endif; ?>
+            <?php if ($done): ?>
+                <strong>Ukończona — nagroda odebrana</strong>
+            <?php elseif ($respectOk && $cashOk): ?>
+                <form method="post" action="./?page=main&amp;view=missions">
+                    <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="claim_mission">
+                    <input type="hidden" name="mission_id" value="<?= e($mission['id']) ?>">
+                    <button type="submit">Odbierz nagrodę</button>
+                </form>
+            <?php else: ?>
+                <p class="muted">W trakcie</p>
+            <?php endif; ?>
+        </article>
+        <?php endforeach; ?>
+    </section>
+    <?php elseif ($selectedLocation === ''): ?>
+    <section class="location-grid" aria-label="Lokacje gry">
+        <a class="location-button <?= isset($lockedLocations['ulica']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['ulica']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=ulica' ?>"><?= isset($lockedLocations['ulica']) ? '🔒 ' : '' ?>Ulica</a>
+        <a class="location-button <?= isset($lockedLocations['napad']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['napad']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=napad' ?>"><?= isset($lockedLocations['napad']) ? '🔒 ' : '' ?>Napad</a>
+        <a class="location-button <?= isset($lockedLocations['gang']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['gang']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=gang' ?>"><?= isset($lockedLocations['gang']) ? '🔒 ' : '' ?>Gang</a>
+        <a class="location-button <?= isset($lockedLocations['sabotaz']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['sabotaz']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=sabotaz' ?>"><?= isset($lockedLocations['sabotaz']) ? '🔒 ' : '' ?>Sabotaż</a>
+
+        <a class="location-button <?= isset($lockedLocations['nocne-zycie']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['nocne-zycie']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=nocne-zycie' ?>"><?= isset($lockedLocations['nocne-zycie']) ? '🔒 ' : '' ?>Nocne życie</a>
+        <a class="location-button <?= isset($lockedLocations['kasyno']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['kasyno']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=kasyno' ?>"><?= isset($lockedLocations['kasyno']) ? '🔒 ' : '' ?>Kasyno</a>
+        <a class="location-button <?= isset($lockedLocations['handel']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['handel']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=handel' ?>"><?= isset($lockedLocations['handel']) ? '🔒 ' : '' ?>Handel</a>
+        <a class="location-button <?= isset($lockedLocations['skwer']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['skwer']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=skwer' ?>"><?= isset($lockedLocations['skwer']) ? '🔒 ' : '' ?>Skwer</a>
+
+        <a class="location-button <?= isset($lockedLocations['czarny-rynek']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['czarny-rynek']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=czarny-rynek' ?>"><?= isset($lockedLocations['czarny-rynek']) ? '🔒 ' : '' ?>Czarny rynek</a>
+        <a class="location-button <?= isset($lockedLocations['szpital']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['szpital']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=szpital' ?>"><?= isset($lockedLocations['szpital']) ? '🔒 ' : '' ?>Szpital</a>
+        <a class="location-button <?= isset($lockedLocations['wiezienie']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['wiezienie']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=wiezienie' ?>"><?= isset($lockedLocations['wiezienie']) ? '🔒 ' : '' ?>Więzienie</a>
+        <a class="location-button <?= isset($lockedLocations['bank']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['bank']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=bank' ?>"><?= isset($lockedLocations['bank']) ? '🔒 ' : '' ?>Bank</a>
+
+        <a class="location-button <?= isset($lockedLocations['policja']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['policja']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=policja' ?>"><?= isset($lockedLocations['policja']) ? '🔒 ' : '' ?>Policja</a>
+        <a class="location-button <?= isset($lockedLocations['detektyw']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['detektyw']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=detektyw' ?>"><?= isset($lockedLocations['detektyw']) ? '🔒 ' : '' ?>Detektyw</a>
+        <a class="location-button <?= isset($lockedLocations['transport']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['transport']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=transport' ?>"><?= isset($lockedLocations['transport']) ? '🔒 ' : '' ?>Transport</a>
+        <a class="location-button <?= isset($lockedLocations['silownia']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['silownia']) ? './?page=main&amp;view=missions' : './?page=main&amp;location=silownia' ?>"><?= isset($lockedLocations['silownia']) ? '🔒 ' : '' ?>Siłownia</a>
+    </section>
+    <?php else: ?>
+    <section class="card location-panel" aria-label="Wybrana lokacja">
+        <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+        <h2><?= e($locationNames[$selectedLocation]) ?></h2>
+        <p class="muted">Tutaj pojawią się informacje i dostępne akcje tej lokacji.</p>
+    </section>
+    <?php endif; ?>
+
+    <?php if (!$showProfile && !$showMissions): ?>
+    <section class="card">
+        <h2>Statystyki postaci</h2>
+        <?php if ($stats): ?>
+            <div class="stats">
+                <div class="stat"><span>Kasa</span><strong><?= number_format((int) $stats['cash'], 0, '.', ',') ?> $</strong></div>
+        <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
+                <div class="stat"><span>Respekt</span><strong><?= (int) $stats['respect'] ?> pkt</strong></div>
+                <div class="stat"><span>Miejsce</span><strong>#<?= (int) ($playerRank ?? 0) ?></strong></div>
+                <div class="stat"><span>Profesja</span><strong><?= $stats['profession'] === null ? 'Nie wybrano' : e($stats['profession']) ?></strong></div>
+                <div class="stat"><span>Obecne miasto</span><strong><?= $stats['current_city'] === null ? 'Nie wybrano' : e($stats['current_city']) ?></strong></div>
+                <div class="stat"><span>Energia</span><strong><?= (int) $stats['energy'] ?>%</strong></div>
+                <div class="stat"><span>Bilety</span><strong><?= (int) $stats['tickets'] ?>/25</strong></div>
+                <div class="stat"><span>Siła</span><strong><?= (int) $stats['strength'] ?></strong></div>
+                <div class="stat"><span>Wytrzymałość</span><strong><?= (int) $stats['endurance'] ?></strong></div>
+                <div class="stat"><span>Inteligencja</span><strong><?= (int) $stats['intelligence'] ?></strong></div>
+                <div class="stat"><span>Charyzma</span><strong><?= (int) $stats['charisma'] ?></strong></div>
+                <div class="stat"><span>Spryt</span><strong><?= (int) $stats['cunning'] ?></strong></div>
+            </div>
+        <?php endif; ?>
+    </section>
+    <?php endif; ?>
+<?php else: ?>
+    <h1>MBZ</h1>
+
+    <?php if ($error !== ''): ?>
+        <div class="error"><?= e($error) ?></div>
+    <?php endif; ?>
+
+    <?php if (!$db instanceof PDO): ?>
+        <p class="muted">Baza danych nie jest jeszcze podłączona, więc logowanie i rejestracja są chwilowo nieaktywne.</p>
+    <?php endif; ?>
+
+    <div class="auth-grid">
+        <section class="card">
+            <h2>Logowanie</h2>
+            <form method="post" action="./" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="login">
+
+                <label for="login-login">Login</label>
+                <input id="login-login" name="login" type="text" required>
+
+                <label for="login-password">Hasło</label>
+                <input id="login-password" name="password" type="password" required>
+
+                <button type="submit">Zaloguj</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Rejestracja</h2>
+            <form method="post" action="./" autocomplete="off">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="register">
+
+                <label for="register-login">Login</label>
+                <input id="register-login" name="login" type="text" minlength="3" maxlength="24" required>
+
+                <label for="register-email">E-mail</label>
+                <input id="register-email" name="email" type="email" required>
+
+                <label for="register-password">Hasło</label>
+                <input id="register-password" name="password" type="password" minlength="8" required>
+
+                <label for="register-password-repeat">Powtórz hasło</label>
+                <input id="register-password-repeat" name="password_repeat" type="password" minlength="8" required>
+
+                <button type="submit">Załóż konto</button>
+            </form>
+            <p class="muted">Nowe konto zawsze otrzymuje zwykłe uprawnienia użytkownika.</p>
+        </section>
+    </div>
+<?php endif; ?>
+</div>
+<?php if ($user): ?>
+<script>
+const menuToggle = document.getElementById('menuToggle');
+const gameNav = document.getElementById('gameNav');
+const rankingCountdown = document.getElementById('rankingCountdown');
+if (rankingCountdown) {
+    const next = new Date(rankingCountdown.dataset.next.replace(' ', 'T')).getTime();
+    const tick = () => {
+        const diff = Math.max(0, next - Date.now());
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        rankingCountdown.textContent = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        if (diff <= 0) location.reload();
+    };
+    tick();
+    setInterval(tick, 1000);
+}
+if (menuToggle && gameNav) {
+    menuToggle.addEventListener('click', () => {
+        const open = gameNav.classList.toggle('open');
+        menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+}
+</script>
+<?php endif; ?>
+</body>
+</html>
+,'reward_strength'=>'siły','reward_endurance'=>'wytrzymałości','reward_intelligence'=>'inteligencji','reward_charisma'=>'charyzmy','reward_cunning'=>'sprytu'] as $field=>$unit) {
+                if ((int)$mission[$field] > 0) $rewards[] = '+' . number_format((int)$mission[$field],0,'.',' ') . ' ' . $unit;
+            }
+            echo e($rewards ? implode(' • ',$rewards) : 'Ukończenie misji');
+            ?>
+            </p>
             <?php if ($mission['target'] !== null): ?>
             <p>Respekt: <?= min((int)($stats['respect'] ?? 0), (int)$mission['target']) ?> / <?= (int)$mission['target'] ?></p>
             <progress value="<?= min((int)($stats['respect'] ?? 0), (int)$mission['target']) ?>" max="<?= (int)$mission['target'] ?>"></progress>
