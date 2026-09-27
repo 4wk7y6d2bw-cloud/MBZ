@@ -16,6 +16,7 @@ $page = preg_replace('/[^a-zA-Z0-9_-]/', '', $page) ?: 'main';
 
 $allowedPages = [
     'main',
+    'live_stats',
     'profession',
     'admin',
     'raids',
