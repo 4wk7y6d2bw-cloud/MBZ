@@ -795,8 +795,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
 const gameNav = document.getElementById('gameNav');
 const rankingCountdown = document.getElementById('rankingCountdown');
 if (rankingCountdown) {
-    const next = new Date(rankingCountdown.dataset.next.replace(' ', 'T')).getTime();
     const tick = () => {
+        const next = new Date(rankingCountdown.dataset.next.replace(' ', 'T')).getTime();
         const diff = Math.max(0, next - Date.now());
         const hours = Math.floor(diff / 3600000);
         const minutes = Math.floor((diff % 3600000) / 60000);
