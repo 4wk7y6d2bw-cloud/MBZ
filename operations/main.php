@@ -69,6 +69,8 @@ $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $missions = [];
 if ($user && $db instanceof PDO) {
  $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY,title VARCHAR(120) NOT NULL,description TEXT NOT NULL,target INT NOT NULL,location VARCHAR(64) DEFAULT NULL,active TINYINT DEFAULT 1)');
+ $cashColumn = $db->query("SHOW COLUMNS FROM missions LIKE 'cash_target'")->fetch();
+ if (!$cashColumn) $db->exec('ALTER TABLE missions ADD COLUMN cash_target BIGINT NULL');
  $db->exec('CREATE TABLE IF NOT EXISTS location_locks (location VARCHAR(64) PRIMARY KEY,mission_id VARCHAR(64) DEFAULT NULL,locked TINYINT DEFAULT 1)');
  $db->exec("INSERT IGNORE INTO missions (id,title,description,target,location) VALUES ('skwer_200','Pierwsze wpływy','Zdobądź 200 punktów respektu.',200,'skwer')");
  $db->exec("INSERT IGNORE INTO location_locks (location,mission_id) VALUES ('skwer','skwer_200')");
@@ -94,7 +96,9 @@ if ($user && $db instanceof PDO) {
                 if ($mission['id'] === $missionId && !isset($completedMissions[$missionId])) {
                     // Re-read server-side stats so a modified form cannot grant an unlock.
                     $freshStats = get_player_stats($db, (int) $user['id']);
-                    if ($freshStats && (int) $freshStats['respect'] >= $mission['target']) {
+                    if ($freshStats
+                        && ($mission['target'] === null || (int) $freshStats['respect'] >= (int) $mission['target'])
+                        && ($mission['cash_target'] === null || (int) $freshStats['cash'] >= (int) $mission['cash_target'])) {
                         $claim = $db->prepare('INSERT IGNORE INTO player_missions (user_id, mission_id) VALUES (?, ?)');
                         $claim->execute([(int) $user['id'], $missionId]);
                         $completedMissions[$missionId] = true;
@@ -282,17 +286,24 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php if ($missionMessage !== ''): ?><p class="stat"><?= e($missionMessage) ?></p><?php endif; ?>
         <?php foreach ($missions as $mission):
             $done = isset($completedMissions[$mission['id']]);
-            $progress = min((int) ($stats['respect'] ?? 0), $mission['target']);
+            $respectOk = $mission['target'] === null || (int) ($stats['respect'] ?? 0) >= (int) $mission['target'];
+            $cashOk = $mission['cash_target'] === null || (int) ($stats['cash'] ?? 0) >= (int) $mission['cash_target'];
         ?>
         <article class="mission">
             <h3><?= e($mission['title']) ?> <?= $done ? '✓' : '' ?></h3>
             <p><?= e($mission['description']) ?></p>
             <p class="muted">Nagroda: <?= $mission['location'] ? 'Odblokowanie: ' . e($locationNames[$mission['location']] ?? $mission['location']) : 'Ukończenie misji' ?></p>
-            <progress value="<?= $progress ?>" max="<?= (int) $mission['target'] ?>"></progress>
-            <p><?= $progress ?> / <?= (int) $mission['target'] ?> respektu</p>
+            <?php if ($mission['target'] !== null): ?>
+            <p>Respekt: <?= min((int)($stats['respect'] ?? 0), (int)$mission['target']) ?> / <?= (int)$mission['target'] ?></p>
+            <progress value="<?= min((int)($stats['respect'] ?? 0), (int)$mission['target']) ?>" max="<?= (int)$mission['target'] ?>"></progress>
+            <?php endif; ?>
+            <?php if ($mission['cash_target'] !== null): ?>
+            <p>Gotówka na koncie: <?= number_format(min((int)($stats['cash'] ?? 0), (int)$mission['cash_target']), 0, '.', ' ') ?> / <?= number_format((int)$mission['cash_target'], 0, '.', ' ') ?> $</p>
+            <progress value="<?= min((int)($stats['cash'] ?? 0), (int)$mission['cash_target']) ?>" max="<?= (int)$mission['cash_target'] ?>"></progress>
+            <?php endif; ?>
             <?php if ($done): ?>
                 <strong>Ukończona — nagroda odebrana</strong>
-            <?php elseif ($progress >= $mission['target']): ?>
+            <?php elseif ($respectOk && $cashOk): ?>
                 <form method="post" action="./?page=main&amp;view=missions">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                     <input type="hidden" name="action" value="claim_mission">
