@@ -66,6 +66,67 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
+$guestbookOwner = null;
+$guestbookEntries = [];
+$guestbookPage = 1;
+$guestbookPages = 1;
+$guestbookMessage = '';
+if ($user && $db instanceof PDO && $showProfile) {
+    $db->exec('CREATE TABLE IF NOT EXISTS guestbook_entries (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        owner_id INT NOT NULL,
+        author_id INT NOT NULL,
+        body VARCHAR(300) NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX guestbook_owner_date (owner_id, created_at, id),
+        INDEX guestbook_author_date (author_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    $requestedId = filter_var($_GET['player'] ?? null, FILTER_VALIDATE_INT);
+    $ownerId = $requestedId && $requestedId > 0 ? $requestedId : (int)$user['id'];
+    $ownerStmt = $db->prepare('SELECT id, login FROM users WHERE id=? AND active=1');
+    $ownerStmt->execute([$ownerId]);
+    $guestbookOwner = $ownerStmt->fetch();
+    if ($guestbookOwner) {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['guestbook_add','guestbook_delete'], true)) {
+            if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+                $guestbookMessage = 'Sesja wygasła. Odśwież stronę.';
+            } elseif ($_POST['action'] === 'guestbook_add') {
+                $body = trim((string)($_POST['body'] ?? ''));
+                if ($body === '' || mb_strlen($body) > 300) {
+                    $guestbookMessage = 'Komentarz musi mieć od 1 do 300 znaków.';
+                } else {
+                    $recent = $db->prepare('SELECT created_at FROM guestbook_entries WHERE author_id=? ORDER BY created_at DESC,id DESC LIMIT 1');
+                    $recent->execute([(int)$user['id']]);
+                    $last = $recent->fetchColumn();
+                    if ($last && strtotime($last) > time()-30) {
+                        $guestbookMessage = 'Odczekaj 30 sekund przed kolejnym komentarzem.';
+                    } else {
+                        $insert = $db->prepare('INSERT INTO guestbook_entries (owner_id,author_id,body) VALUES (?,?,?)');
+                        $insert->execute([(int)$guestbookOwner['id'],(int)$user['id'],$body]);
+                        redirect('./?page=main&view=profile&player='.(int)$guestbookOwner['id'].'#guestbook');
+                    }
+                }
+            } elseif ((int)$guestbookOwner['id'] === (int)$user['id']) {
+                $entryId = filter_var($_POST['entry_id'] ?? null,FILTER_VALIDATE_INT);
+                if ($entryId && $entryId > 0) {
+                    $delete = $db->prepare('DELETE FROM guestbook_entries WHERE id=? AND owner_id=?');
+                    $delete->execute([$entryId,(int)$user['id']]);
+                    redirect('./?page=main&view=profile&player='.(int)$user['id'].'#guestbook');
+                }
+            }
+        }
+        $countStmt = $db->prepare('SELECT COUNT(*) FROM guestbook_entries WHERE owner_id=?');
+        $countStmt->execute([(int)$guestbookOwner['id']]);
+        $total = (int)$countStmt->fetchColumn();
+        $guestbookPages = max(1,(int)ceil($total/10));
+        $requestedPage = filter_var($_GET['gb_page'] ?? 1,FILTER_VALIDATE_INT);
+        $guestbookPage = min($guestbookPages,max(1,$requestedPage ?: 1));
+        $offset = ($guestbookPage-1)*10;
+        $entriesStmt = $db->prepare('SELECT g.id,g.author_id,g.body,g.created_at,u.login FROM guestbook_entries g JOIN users u ON u.id=g.author_id WHERE g.owner_id=? ORDER BY g.created_at DESC,g.id DESC LIMIT 10 OFFSET '.$offset);
+        $entriesStmt->execute([(int)$guestbookOwner['id']]);
+        $guestbookEntries = $entriesStmt->fetchAll();
+    }
+}
 $missions = [];
 if ($user && $db instanceof PDO) {
  $db->exec('CREATE TABLE IF NOT EXISTS missions (id VARCHAR(64) PRIMARY KEY,title VARCHAR(120) NOT NULL,description TEXT NOT NULL,target INT NULL,location VARCHAR(64) DEFAULT NULL,active TINYINT DEFAULT 1)');
@@ -239,8 +300,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <?php if ($showProfile): ?>
     <section class="card location-panel">
         <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
-        <h2>Twój profil</h2>
-        <?php if ($stats): ?>
+        <h2><?= $guestbookOwner ? 'Profil: '.e($guestbookOwner['login']) : 'Twój profil' ?></h2>
+        <?php if ($guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id'] && $stats): ?>
         <div class="stats">
             <div class="stat"><span>Login</span><strong><?= e($user['login'] ?? '') ?></strong></div>
             <div class="stat"><span>Miejsce w rankingu</span><strong>#<?= (int) ($playerRank ?? 0) ?></strong></div>
@@ -295,6 +356,42 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </tbody></table>
         <?php else: ?>
             <p class="muted">Pierwszy zapis pojawi się po zakończeniu bieżącego dnia gry.</p>
+        <?php endif; ?>
+        <?php if ($guestbookOwner): ?>
+        <div id="guestbook" style="margin-top:32px">
+          <h2>Księga gości</h2>
+          <?php if ($guestbookMessage !== ''): ?><p><?= e($guestbookMessage) ?></p><?php endif; ?>
+          <form method="post" action="./?page=main&amp;view=profile&amp;player=<?= (int)$guestbookOwner['id'] ?>#guestbook">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="guestbook_add">
+            <label for="guestbook-body">Dodaj wpis (maksymalnie 300 znaków)</label>
+            <textarea id="guestbook-body" name="body" maxlength="300" required rows="3" style="width:100%;background:#111;color:white;padding:12px;border:1px solid #555;border-radius:8px"></textarea>
+            <button type="submit">Dodaj komentarz</button>
+          </form>
+          <?php foreach ($guestbookEntries as $entry): ?>
+            <div class="mission">
+              <strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$entry['author_id'] ?>#guestbook"><?= e($entry['login']) ?></a></strong>
+              <span class="muted"><?= e($entry['created_at']) ?></span>
+              <p style="white-space:pre-wrap;overflow-wrap:anywhere"><?= e($entry['body']) ?></p>
+              <?php if ((int)$guestbookOwner['id'] === (int)$user['id']): ?>
+              <form method="post" action="./?page=main&amp;view=profile#guestbook">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="guestbook_delete">
+                <input type="hidden" name="entry_id" value="<?= (int)$entry['id'] ?>">
+                <button type="submit">Usuń wpis</button>
+              </form>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+          <?php if (!$guestbookEntries): ?><p class="muted">Brak wpisów. Dodaj pierwszy komentarz.</p><?php endif; ?>
+          <?php if ($guestbookPages > 1): ?>
+            <nav aria-label="Strony księgi gości" style="margin-top:16px">
+              <?php for ($pageNo=1;$pageNo<=$guestbookPages;$pageNo++): ?>
+                <a class="button <?= $pageNo===$guestbookPage ? '' : 'secondary' ?>" href="./?page=main&amp;view=profile&amp;player=<?= (int)$guestbookOwner['id'] ?>&amp;gb_page=<?= $pageNo ?>#guestbook"><?= $pageNo ?></a>
+              <?php endfor; ?>
+            </nav>
+          <?php endif; ?>
+        </div>
         <?php endif; ?>
     </section>
     <?php elseif ($showMissions): ?>
