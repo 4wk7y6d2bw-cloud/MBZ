@@ -83,4 +83,7 @@ try {
     $db->rollBack();
     throw $e;
 }
+$stmt = $db->prepare("INSERT IGNORE INTO game_migrations (name) VALUES (?)");
+$stmt->execute(['all_raids_off_v1']);
+if ($stmt->rowCount()) $db->exec("UPDATE city_raids SET active=0");
 echo json_encode(['cities' => $db->query('SELECT city FROM city_raids WHERE active=1')->fetchAll(PDO::FETCH_COLUMN)]);
