@@ -64,6 +64,36 @@ $locationNames = [
 $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
     ? $_GET['location'] : '';
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
+$streetMessage = '';
+$streetReward = null;
+if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
+    && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'street_grocery_robbery') {
+    if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+        $streetMessage = 'Sesja wygasła. Odśwież stronę.';
+    } else {
+        $db->beginTransaction();
+        try {
+            $lock = $db->prepare('SELECT energy FROM player_stats WHERE user_id=? FOR UPDATE');
+            $lock->execute([(int)$user['id']]);
+            $currentEnergy = $lock->fetchColumn();
+            if ($currentEnergy === false || (int)$currentEnergy < 5) {
+                $streetMessage = 'Potrzebujesz co najmniej 5% energii.';
+            } else {
+                $streetReward = random_int(10,20);
+                $rob = $db->prepare('UPDATE player_stats SET energy=energy-5,cash=cash+?,
+                    strength=strength+1,endurance=endurance+1,intelligence=intelligence+1,
+                    charisma=charisma+1,cunning=cunning+1 WHERE user_id=? AND energy>=5');
+                $rob->execute([$streetReward,(int)$user['id']]);
+                $streetMessage = 'Rabunek udany! +'.$streetReward.' $ i +1 do każdej statystyki. -5% energii.';
+            }
+            $db->commit();
+            $stats = get_player_stats($db,(int)$user['id']);
+        } catch (Throwable $ex) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw $ex;
+        }
+    }
+}
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $showWanted = isset($_GET['view']) && $_GET['view'] === 'wanted';
@@ -599,7 +629,18 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card location-panel" aria-label="Wybrana lokacja">
         <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
         <h2><?= e($locationNames[$selectedLocation]) ?></h2>
-        <p class="muted">Tutaj pojawią się informacje i dostępne akcje tej lokacji.</p>
+        <?php if ($selectedLocation === 'ulica'): ?>
+          <h3>Rabunek na spożywczak</h3>
+          <p class="muted">Koszt: 5% energii · Szansa wpadki: 0% · Nagroda: 10–20 $ i +1 do każdej statystyki. Bez limitu prób, dopóki masz energię.</p>
+          <?php if ($streetMessage !== ''): ?><p class="stat"><?= e($streetMessage) ?></p><?php endif; ?>
+          <form method="post" action="./?page=main&amp;location=ulica">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="street_grocery_robbery">
+            <button type="submit" <?= !$stats || (int)$stats['energy'] < 5 ? 'disabled' : '' ?>>Napadnij na spożywczak</button>
+          </form>
+        <?php else: ?>
+          <p class="muted">Tutaj pojawią się informacje i dostępne akcje tej lokacji.</p>
+        <?php endif; ?>
     </section>
     <?php endif; ?>
 
