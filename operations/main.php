@@ -362,9 +362,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         .city-map .map-legend { display: flex; flex-wrap: wrap; gap: 15px; color: #bbb; font-size: 13px; margin: 12px 0; }
         .city-map .map-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; background: #51a8ff; }
         .city-map .map-dot.current { background: #f45454; box-shadow: 0 0 12px #f45454; }
-        .city-map .raid-dot { animation: raid-alarm .75s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+        .city-map .raid-dot { animation: raid-alarm 1.1s ease-in-out infinite alternate; }
         .city-map .raid-ring { animation: raid-pulse 1.2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
-        @keyframes raid-alarm { from { fill: #ff3434; filter: drop-shadow(0 0 2px #f33); } to { fill: #ffe066; filter: drop-shadow(0 0 12px #ff3434); } }
+        @keyframes raid-alarm { from { fill: #ff3434; filter: drop-shadow(0 0 8px #ff3434); } to { fill: var(--city-color); filter: none; } }
         @keyframes raid-pulse { from { opacity: .95; transform: scale(.6); } to { opacity: 0; transform: scale(2.2); } }
         @media (prefers-reduced-motion: reduce) { .city-map .raid-dot, .city-map .raid-ring { animation: none; } }
         .city-map svg { width: 100%; max-height: 470px; display: block; margin: auto; }
@@ -636,11 +636,11 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
 
       <svg viewBox="0 0 550 510" role="img" aria-label="Schematyczna mapa Polski z zaznaczonym aktualnym miastem i pozostałymi miastami gry">
         <path d="M79 139 L117 113 153 120 194 91 236 96 258 42 306 55 339 91 384 102 418 130 467 145 480 203 464 256 484 311 453 356 467 400 438 451 405 460 377 440 345 472 308 457 274 469 242 441 203 447 168 420 139 390 109 366 91 328 62 303 78 259 59 219 77 184 Z" fill="#252e38" stroke="#637589" stroke-width="3" stroke-linejoin="round"/>
-        <?php foreach ($mapCities as [$mapCity, $mx, $my]): $isHere = mb_strtolower((string)($stats['current_city'] ?? '')) === mb_strtolower($mapCity); $isRaid = in_array($mapCity, $raidCities, true); $isUnavailable = in_array($mapCity, $unavailableCities, true); ?>
+        <?php foreach ($mapCities as [$mapCity, $mx, $my]): $isHere = mb_strtolower((string)($stats['current_city'] ?? '')) === mb_strtolower($mapCity); $isRaid = in_array($mapCity, $raidCities, true); $isUnavailable = in_array($mapCity, $unavailableCities, true); $cityColor = $isHere ? '#ff9500' : ($isUnavailable ? '#80858e' : '#51a8ff'); ?>
           <g>
             <?php if ($isHere): ?><circle cx="<?= $mx ?>" cy="<?= $my ?>" r="14" fill="#ff9500" opacity=".24"/><?php endif; ?>
             <?php if ($isRaid): ?><circle class="raid-ring" cx="<?= $mx ?>" cy="<?= $my ?>" r="11" fill="none" stroke="#ff4545" stroke-width="3"/><?php endif; ?>
-            <circle <?= $isRaid ? 'class="raid-dot"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="<?= $isRaid ? 8 : ($isHere ? 7 : 5) ?>" fill="<?= $isRaid ? '#ff3434' : ($isUnavailable ? '#80858e' : ($isHere ? '#ff9500' : '#51a8ff')) ?>" stroke="#121820" stroke-width="2"/>
+            <circle <?= $isRaid ? 'class="raid-dot" style="--city-color: ' . $cityColor . '"' : '' ?> cx="<?= $mx ?>" cy="<?= $my ?>" r="<?= $isRaid ? 8 : ($isHere ? 7 : 5) ?>" fill="<?= $isRaid ? '#ff3434' : $cityColor ?>" stroke="#121820" stroke-width="2"/>
             <?php if ($isRaid): ?><title>Obława: <?= e($mapCity) ?></title><?php elseif ($isUnavailable): ?><title>Miasto niedostępne: <?= e($mapCity) ?></title><?php endif; ?>
             <text class="map-label<?= $isHere ? ' current' : '' ?>" x="<?= $mx ?>" y="<?= $my - 11 ?>" text-anchor="middle"><?= e($mapCity) ?></text>
           </g>
