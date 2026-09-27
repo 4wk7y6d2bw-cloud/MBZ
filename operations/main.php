@@ -788,36 +788,10 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
 <?php if ($user): ?>
 <script>
 
-/* Keep every visible player-stat tile synchronized with server data. */
+/* Lightweight HUD: only change DOM when server values differ. */
 (() => {
     const labels = {
-        'Kasa': ['cash', v => Number(v).toLocaleString('en-US') + ' 
-const gameNav = document.getElementById('gameNav');
-const rankingCountdown = document.getElementById('rankingCountdown');
-if (rankingCountdown) {
-    const tick = () => {
-        const next = new Date(rankingCountdown.dataset.next.replace(' ', 'T')).getTime();
-        const diff = Math.max(0, next - Date.now());
-        const hours = Math.floor(diff / 3600000);
-        const minutes = Math.floor((diff % 3600000) / 60000);
-        const seconds = Math.floor((diff % 60000) / 1000);
-        rankingCountdown.textContent = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
-        // The live stats request updates the game day without reloading.
-    };
-    tick();
-    setInterval(tick, 1000);
-}
-if (menuToggle && gameNav) {
-    menuToggle.addEventListener('click', () => {
-        const open = gameNav.classList.toggle('open');
-        menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
-}
-</script>
-<?php endif; ?>
-</body>
-</html>
-],
+        'Kasa': ['cash', v => Number(v).toLocaleString('en-US') + ' $'],
         'Energia': ['energy', v => v + '%'],
         'Bilety': ['tickets', v => v + '/25'],
         'Respekt': ['respect', v => v + ' pkt'],
@@ -831,62 +805,54 @@ if (menuToggle && gameNav) {
         'Profesja': ['profession', v => v || 'Nie wybrano']
     };
     let busy = false;
+    let lastVersion = '';
     const refreshStats = async () => {
         if (busy || document.hidden) return;
         busy = true;
         try {
             const response = await fetch('./?page=live_stats', {credentials: 'same-origin', cache: 'no-store'});
-            if (response.status === 401) return; // Session expired; do not replace data with guest values.
             if (!response.ok) return;
             const data = await response.json();
-            if (!data.player) return;
+            if (!data.player || data.version === lastVersion) return;
+            lastVersion = data.version;
             document.querySelectorAll('.stats .stat, .game-state .stat').forEach(tile => {
                 const label = tile.querySelector('span')?.textContent.trim();
-                const value = tile.querySelector('strong');
-                if (!label || !value) return;
+                const target = tile.querySelector('strong');
+                if (!label || !target) return;
+                let next;
                 if (labels[label]) {
                     const [key, format] = labels[label];
-                    value.textContent = format(data.player[key]);
-                } else if (label === 'Miejsce w rankingu') {
-                    value.textContent = '#' + (data.rank ?? 0);
-                } else if (label === 'Dzień gry') {
-                    value.textContent = data.game.game_day + '/60';
-                } else if (label === 'Sezon gry') {
-                    value.textContent = String(data.game.season);
-                }
+                    next = format(data.player[key]);
+                } else if (label === 'Miejsce w rankingu') next = '#' + (data.rank ?? 0);
+                else if (label === 'Dzień gry') next = data.game.game_day + '/60';
+                else if (label === 'Sezon gry') next = String(data.game.season);
+                if (next !== undefined && target.textContent !== next) target.textContent = next;
             });
-            const robberyButton = document.querySelector('form input[name="action"][value="street_grocery_robbery"]')?.form?.querySelector('button[type="submit"]');
-            if (robberyButton) robberyButton.disabled = data.player.energy < 5;
+            const button = document.querySelector('form input[name="action"][value="street_grocery_robbery"]')?.form?.querySelector('button[type="submit"]');
+            if (button) button.disabled = data.player.energy < 5;
             const countdown = document.getElementById('rankingCountdown');
-            if (countdown && data.game.next_ranking_update) {
-                countdown.dataset.next = data.game.next_ranking_update;
-            }
-        } catch (_) {
-            // Transient network failure: keep last known stats and retry next interval.
-        } finally {
-            busy = false;
-        }
+            if (countdown && data.game.next_ranking_update) countdown.dataset.next = data.game.next_ranking_update;
+        } catch (_) { /* Keep existing values during a network error. */ }
+        finally { busy = false; }
     };
-    setInterval(refreshStats, 15000);
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) refreshStats();
-    });
+    // A standard PHP host cannot push SQL changes to the browser without a persistent connection.
+    // This light check is paused when the tab is hidden.
+    setInterval(refreshStats, 30000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshStats(); });
     window.addEventListener('focus', refreshStats);
     refreshStats();
 })();
-
 const menuToggle = document.getElementById('menuToggle');
 const gameNav = document.getElementById('gameNav');
 const rankingCountdown = document.getElementById('rankingCountdown');
 if (rankingCountdown) {
-    const next = new Date(rankingCountdown.dataset.next.replace(' ', 'T')).getTime();
     const tick = () => {
+        const next = new Date(rankingCountdown.dataset.next.replace(' ', 'T')).getTime();
         const diff = Math.max(0, next - Date.now());
         const hours = Math.floor(diff / 3600000);
         const minutes = Math.floor((diff % 3600000) / 60000);
         const seconds = Math.floor((diff % 60000) / 1000);
         rankingCountdown.textContent = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
-        if (diff <= 0) location.reload();
     };
     tick();
     setInterval(tick, 1000);
