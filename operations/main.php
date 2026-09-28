@@ -441,6 +441,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         }
         .location-grid.traveling {opacity:.45;pointer-events:none;filter:grayscale(1);}
         .travel-status {margin-bottom:16px;border-color:#b28c37;background:#292316;}
+        #travelDestination {width:100%;padding:13px;border:1px solid #555;border-radius:9px;background:#111;color:#fff;font-size:16px;}
         .travel-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
         @media(max-width:600px){.travel-grid{grid-template-columns:1fr}}
         .profile-tabs { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0; }
@@ -619,24 +620,54 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </script>
       <?php else: ?>
         <p>Jesteś w: <strong><?= e($stats['current_city']) ?></strong></p>
-        <div class="travel-grid">
-        <?php foreach ($travelCities as $destination=>$coords):
-          $quote=travel_quote($travelCities,(string)$stats['current_city'],$destination,(int)$stats['respect']);
-          if (!$quote) continue;
-          $cityUnlocked=isset($unlockedCities[$destination]);
-        ?>
-          <form class="mission" method="post" action="./?page=main&amp;view=travel">
-            <h3><?= e($destination) ?> <?= $cityUnlocked ? '' : '🔒' ?></h3>
-            <p class="muted"><?= $quote['km'] ?> km · <?= (int)floor($quote['seconds']/60) ?> min <?= str_pad((string)($quote['seconds']%60),2,'0',STR_PAD_LEFT) ?> s</p>
-            <strong><?= number_format($quote['price'],0,'.',' ') ?> $</strong>
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <input type="hidden" name="action" value="start_travel">
-            <input type="hidden" name="destination" value="<?= e($destination) ?>">
-            <?php if (!$cityUnlocked): ?><p class="muted">Odblokuj w misjach</p><?php endif; ?>
-            <button type="submit" <?= !$cityUnlocked || (int)$stats['cash']<$quote['price'] || (int)($gameState['is_break']??0)===1 ? 'disabled' : '' ?>><?= $cityUnlocked ? 'Podróżuj' : 'Zablokowane' ?></button>
-          </form>
-        <?php endforeach; ?>
-        </div>
+        <form class="mission" method="post" action="./?page=main&amp;view=travel">
+          <label for="travelDestination">Wybierz miasto docelowe</label>
+          <select id="travelDestination" name="destination" required>
+            <option value="">— Wybierz miasto —</option>
+            <?php foreach ($travelCities as $destination=>$coords):
+              $quote=travel_quote($travelCities,(string)$stats['current_city'],$destination,(int)$stats['respect']);
+              if (!$quote) continue;
+              $cityUnlocked=isset($unlockedCities[$destination]);
+            ?>
+              <option value="<?= e($destination) ?>" <?= $cityUnlocked ? '' : 'disabled' ?>><?= e($destination) ?><?= $cityUnlocked ? '' : ' 🔒 (odblokuj w misjach)' ?></option>
+            <?php endforeach; ?>
+          </select>
+          <div id="travelDetails" class="stat" style="margin-top:16px" hidden>
+            <span>Odległość i czas</span>
+            <strong id="travelRoute"></strong>
+            <span style="margin-top:10px">Cena podróży</span>
+            <strong id="travelPrice"></strong>
+          </div>
+          <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+          <input type="hidden" name="action" value="start_travel">
+          <button type="submit" id="travelSubmit" disabled>Podróżuj</button>
+        </form>
+        <script>
+        (() => {
+          const select=document.getElementById('travelDestination');
+          const details=document.getElementById('travelDetails');
+          const route=document.getElementById('travelRoute');
+          const price=document.getElementById('travelPrice');
+          const submit=document.getElementById('travelSubmit');
+          const routes=<?= json_encode(array_reduce(array_keys($travelCities),function($all,$destination) use ($travelCities,$stats,$unlockedCities) {
+            $quote=travel_quote($travelCities,(string)$stats['current_city'],$destination,(int)$stats['respect']);
+            if($quote) $all[$destination]=['km'=>$quote['km'],'seconds'=>$quote['seconds'],'price'=>$quote['price'],'unlocked'=>isset($unlockedCities[$destination])];
+            return $all;
+          },[]),JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
+          const cash=<?= (int)$stats['cash'] ?>;
+          const seasonBreak=<?= (int)($gameState['is_break']??0)===1 ? 'true' : 'false' ?>;
+          select.addEventListener('change',()=>{
+            const q=routes[select.value];
+            details.hidden=!q;
+            if(!q){submit.disabled=true;return;}
+            route.textContent=q.km+' km · '+Math.floor(q.seconds/60)+' min '+String(q.seconds%60).padStart(2,'0')+' s';
+            price.textContent=q.price.toLocaleString('pl-PL')+' $';
+            submit.disabled=!q.unlocked||cash<q.price||seasonBreak;
+            submit.textContent=seasonBreak?'Przerwa między sezonami':cash<q.price?'Za mało pieniędzy':'Podróżuj';
+          });
+        })();
+        </script>
+
       <?php endif; ?>
     </section>
     <?php elseif (($_GET['view'] ?? '') === 'contacts' || ($_GET['view'] ?? '') === 'market'): ?>
