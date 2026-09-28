@@ -25,6 +25,12 @@ try {
         $elapsed = (int) $stats['energy_elapsed_seconds'];
         $stats['energy'] = min(100, (int) $stats['energy'] + intdiv($elapsed, 90));
     }
+    // Derive live respect from current cash and attributes, matching get_player_stats().
+    $statBonus = 0;
+    foreach (['strength','endurance','intelligence','charisma','cunning'] as $attribute) {
+        $statBonus += max(0, (int) $stats[$attribute] - 10);
+    }
+    $stats['respect'] = max(100, 100 + intdiv(max(0, (int) $stats['cash'] - 500), 10) + intdiv($statBonus, 20));
     $rank = get_player_rank($db, $userId);
     $fields = ['cash','credits','respect','public_respect','energy','tickets','strength','endurance','intelligence','charisma','cunning','profession','current_city'];
     $player = [];
