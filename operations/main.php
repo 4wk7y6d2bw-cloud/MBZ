@@ -337,6 +337,26 @@ if ($user && $db instanceof PDO) {
         }
     }
 }
+// Misje podróżnicze: jedno odblokowanie dla każdego miasta poza startowym.
+$travelMissionMessage='';
+if ($user && $db instanceof PDO && ($_POST['action'] ?? '') === 'unlock_city') {
+    if ($activeTravel) $travelMissionMessage='Odblokowywanie miast jest niedostępne podczas podróży.';
+    elseif (!csrf_valid($_POST['csrf_token'] ?? null)) $travelMissionMessage='Sesja wygasła. Odśwież stronę.';
+    else {
+        $city=is_string($_POST['city'] ?? null)?$_POST['city']:'';
+        $cityIndex=array_search($city,array_keys($travelCities),true);
+        $required=$cityIndex===false?PHP_INT_MAX:200+100*$cityIndex;
+        if (!isset($travelCities[$city])) $travelMissionMessage='Nieprawidłowe miasto.';
+        elseif (isset($unlockedCities[$city])) $travelMissionMessage='To miasto jest już odblokowane.';
+        elseif ((int)$stats['respect']<$required) $travelMissionMessage='Nie masz jeszcze wymaganego respektu.';
+        else {
+            $unlock=$db->prepare('INSERT IGNORE INTO player_unlocked_cities(user_id,city) VALUES(?,?)');
+            $unlock->execute([(int)$user['id'],$city]);
+            $unlockedCities[$city]=true;
+            $travelMissionMessage='Odblokowano podróż do: '.$city.'.';
+        }
+    }
+}
 $lockedLocations = [];
 if ($user && $db instanceof PDO) {
  $locks = $db->query('SELECT l.location,l.mission_id,m.title FROM location_locks l LEFT JOIN missions m ON m.id=l.mission_id AND m.active=1 WHERE l.locked=1')->fetchAll();
@@ -603,15 +623,17 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php foreach ($travelCities as $destination=>$coords):
           $quote=travel_quote($travelCities,(string)$stats['current_city'],$destination,(int)$stats['respect']);
           if (!$quote) continue;
+          $cityUnlocked=isset($unlockedCities[$destination]);
         ?>
           <form class="mission" method="post" action="./?page=main&amp;view=travel">
-            <h3><?= e($destination) ?></h3>
+            <h3><?= e($destination) ?> <?= $cityUnlocked ? '' : '🔒' ?></h3>
             <p class="muted"><?= $quote['km'] ?> km · <?= (int)floor($quote['seconds']/60) ?> min <?= str_pad((string)($quote['seconds']%60),2,'0',STR_PAD_LEFT) ?> s</p>
             <strong><?= number_format($quote['price'],0,'.',' ') ?> $</strong>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="start_travel">
             <input type="hidden" name="destination" value="<?= e($destination) ?>">
-            <button type="submit" <?= (int)$stats['cash']<$quote['price'] || (int)($gameState['is_break']??0)===1 ? 'disabled' : '' ?>>Podróżuj</button>
+            <?php if (!$cityUnlocked): ?><p class="muted">Odblokuj w misjach</p><?php endif; ?>
+            <button type="submit" <?= !$cityUnlocked || (int)$stats['cash']<$quote['price'] || (int)($gameState['is_break']??0)===1 ? 'disabled' : '' ?>><?= $cityUnlocked ? 'Podróżuj' : 'Zablokowane' ?></button>
           </form>
         <?php endforeach; ?>
         </div>
@@ -661,6 +683,34 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <h2>Misje</h2>
         <p class="muted">Wykonuj zadania, odbieraj nagrody i odblokowuj nowe lokacje.</p>
         <?php if ($missionMessage !== ''): ?><p class="stat"><?= e($missionMessage) ?></p><?php endif; ?>
+        <?php if ($travelMissionMessage !== ''): ?><p class="stat"><?= e($travelMissionMessage) ?></p><?php endif; ?>
+        <h3>Misje podróżnicze</h3>
+        <p class="muted">Miasto startowe jest odblokowane. Zdobywaj respekt i odblokowuj pozostałe miasta.</p>
+        <div class="travel-grid">
+        <?php foreach (array_keys($travelCities) as $cityIndex=>$city):
+            $required=200+100*$cityIndex;
+            $cityUnlocked=isset($unlockedCities[$city]);
+        ?>
+          <article class="mission">
+            <h3><?= e($city) ?> <?= $cityUnlocked ? '✓' : '🔒' ?></h3>
+            <?php if ($cityUnlocked): ?>
+              <strong>Odblokowane</strong>
+            <?php else: ?>
+              <p>Wymagany respekt: <?= number_format($required,0,'.',' ') ?></p>
+              <progress value="<?= min((int)$stats['respect'],$required) ?>" max="<?= $required ?>"></progress>
+              <?php if ((int)$stats['respect'] >= $required && !$activeTravel): ?>
+              <form method="post" action="./?page=main&amp;view=missions">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="unlock_city">
+                <input type="hidden" name="city" value="<?= e($city) ?>">
+                <button type="submit">Odblokuj miasto</button>
+              </form>
+              <?php else: ?><p class="muted"><?= $activeTravel ? 'Dostępne po podróży' : 'Zdobądź wymagany respekt' ?></p><?php endif; ?>
+            <?php endif; ?>
+          </article>
+        <?php endforeach; ?>
+        </div>
+        <h3>Pozostałe misje</h3>
         <?php foreach ($missions as $mission):
             $done = isset($completedMissions[$mission['id']]);
             $respectOk = $mission['target'] === null || (int) ($stats['respect'] ?? 0) >= (int) $mission['target'];
