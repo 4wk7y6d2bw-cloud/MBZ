@@ -577,8 +577,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </div>
         <?php endif; ?>
         <?php if ($profileTab === 'respect' && $guestbookOwner): ?>
-        <h2 style="margin-top:28px">Historia respektu — sezon <?= (int) ($gameState['season'] ?? 1) ?></h2>
-        <p class="muted">Wynik zapisywany na koniec każdego dnia gry (co 4 godziny).</p>
+        <h2 style="margin-top:28px">Historia respektu</h2>
         <?php if ($respectHistory): ?>
         <?php
             $values = array_map(static fn($item) => (int) $item['respect'], $respectHistory);
