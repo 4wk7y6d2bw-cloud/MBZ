@@ -9,6 +9,18 @@ $travelCities = [
  'Olsztyn'=>[53.7784,20.4801], 'Białystok'=>[53.1325,23.1688],
  'Lublin'=>[51.2465,22.5684], 'Kielce'=>[50.8661,20.6286],
 ];
+// Każdy gracz zaczyna z odblokowanym wyłącznie swoim miastem.
+$db->exec('CREATE TABLE IF NOT EXISTS player_unlocked_cities (
+ user_id INT NOT NULL,
+ city VARCHAR(64) NOT NULL,
+ unlocked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY (user_id,city)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+$seedCity=$db->prepare('INSERT IGNORE INTO player_unlocked_cities(user_id,city) VALUES (?,?)');
+$seedCity->execute([(int)$user['id'],(string)$stats['current_city']]);
+$cityAccessQuery=$db->prepare('SELECT city FROM player_unlocked_cities WHERE user_id=?');
+$cityAccessQuery->execute([(int)$user['id']]);
+$unlockedCities=array_fill_keys($cityAccessQuery->fetchAll(PDO::FETCH_COLUMN),true);
 function travel_distance(array $from, array $to): int {
  $lat1=deg2rad($from[0]); $lat2=deg2rad($to[0]);
  $dlat=$lat2-$lat1; $dlon=deg2rad($to[1]-$from[1]);
@@ -74,6 +86,7 @@ if ($showTravel && $_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')
    $existing=$db->prepare('SELECT 1 FROM player_travel WHERE user_id=? FOR UPDATE');
    $existing->execute([(int)$user['id']]);
    if (!$quote) $travelMessage='Wybierz inne dostępne miasto.';
+   elseif (!isset($unlockedCities[$destination])) $travelMessage='Najpierw odblokuj to miasto w misjach.';
    elseif ($existing->fetchColumn()) $travelMessage='Jesteś już w podróży.';
    elseif ((int)$fresh['cash']<$quote['price']) $travelMessage='Nie masz wystarczająco pieniędzy.';
    else {
