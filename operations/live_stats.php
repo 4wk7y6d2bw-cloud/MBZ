@@ -17,12 +17,12 @@ try {
     $game = $db->query('SELECT game_day, season, is_break, next_ranking_update FROM game_state WHERE id=1')->fetch();
     if (!$game) throw new RuntimeException('Game state missing');
     // Only regenerate the logged-in player's energy; avoid global ranking writes.
-    $query = $db->prepare('SELECT * FROM player_stats WHERE user_id=? LIMIT 1');
+    $query = $db->prepare('SELECT player_stats.*, GREATEST(0, TIMESTAMPDIFF(SECOND, energy_updated_at, NOW())) AS energy_elapsed_seconds FROM player_stats WHERE user_id=? LIMIT 1');
     $query->execute([$userId]);
     $stats = $query->fetch();
     if (!$stats) throw new RuntimeException('Player stats missing');
     if ((int) $stats['energy'] < 100 && !empty($stats['energy_updated_at'])) {
-        $elapsed = max(0, time() - strtotime($stats['energy_updated_at']));
+        $elapsed = (int) $stats['energy_elapsed_seconds'];
         $stats['energy'] = min(100, (int) $stats['energy'] + intdiv($elapsed, 30));
     }
     $rank = get_player_rank($db, $userId);
