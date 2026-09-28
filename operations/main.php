@@ -237,6 +237,7 @@ if ($showWanted && $user && $db instanceof PDO && $gameState) {
     }
 }
 $guestbookOwner = null;
+$publicProfile = null;
 $guestbookEntries = [];
 $guestbookPage = 1;
 $guestbookPages = 1;
@@ -261,6 +262,12 @@ if ($user && $db instanceof PDO && $showProfile) {
     $ownerStmt = $db->prepare('SELECT id, login FROM users WHERE id=? AND active=1');
     $ownerStmt->execute([$ownerId]);
     $guestbookOwner = $ownerStmt->fetch();
+    if ($guestbookOwner && (int)$guestbookOwner['id'] !== (int)$user['id']) {
+        $publicStmt=$db->prepare('SELECT profession,current_city,public_respect,strength,endurance,intelligence,charisma,cunning FROM player_stats WHERE user_id=?');
+        $publicStmt->execute([(int)$guestbookOwner['id']]);
+        $publicProfile=$publicStmt->fetch() ?: null;
+        $publicRank=get_player_rank($db,(int)$guestbookOwner['id']);
+    }
     if ($guestbookOwner) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['guestbook_add','guestbook_delete'], true)) {
             if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -557,6 +564,18 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
         </div>
         <?php endif; ?>
+        <?php if ($profileTab === 'overview' && $guestbookOwner && $publicProfile): ?>
+        <div class="stats">
+          <div class="stat"><span>Login</span><strong><?= e($guestbookOwner['login']) ?></strong></div>
+          <div class="stat"><span>Miejsce w rankingu</span><strong>#<?= (int)$publicRank ?></strong></div>
+          <div class="stat"><span>Respekt publiczny</span><strong><?= number_format((int)$publicProfile['public_respect'],0,'.',' ') ?> pkt</strong></div>
+          <div class="stat"><span>Profesja</span><strong><?= e($publicProfile['profession'] ?? 'Nie wybrano') ?></strong></div>
+          <div class="stat"><span>Miasto</span><strong><?= e($publicProfile['current_city'] ?? 'Nie wybrano') ?></strong></div>
+          <?php foreach (['strength'=>'Siła','endurance'=>'Wytrzymałość','intelligence'=>'Inteligencja','charisma'=>'Charyzma','cunning'=>'Spryt'] as $key=>$label): ?>
+          <div class="stat"><span><?= $label ?></span><strong><?= (int)$publicProfile[$key] ?></strong></div>
+          <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
         <?php if ($profileTab === 'respect' && $guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id']): ?>
         <h2 style="margin-top:28px">Historia respektu — sezon <?= (int) ($gameState['season'] ?? 1) ?></h2>
         <p class="muted">Wynik zapisywany na koniec każdego dnia gry (co 4 godziny).</p>
@@ -721,7 +740,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php foreach ($rankingPlayers as $index=>$ranked): ?>
           <tr style="border-top:1px solid #363636;<?= (int)$ranked['id']===(int)$user['id']?'background:#263b2b;':'' ?>">
             <td style="padding:12px">#<?= (int)$ranked['global_rank'] ?></td>
-            <td style="padding:12px;font-weight:700"><?= e($ranked['login']) ?></td>
+            <td style="padding:12px;font-weight:700"><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$ranked['id'] ?>"><?= e($ranked['login']) ?></a></td>
             <td style="padding:12px"><?= number_format((int)$ranked['public_respect'],0,'.',' ') ?></td>
             <td style="padding:12px"><?= e((string)($ranked['profession']??'—')) ?></td>
           </tr>
