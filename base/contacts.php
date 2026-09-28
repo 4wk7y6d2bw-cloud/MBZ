@@ -1,0 +1,64 @@
+<?php
+// Kontakty: jedna relacja na parę graczy, niezależnie od kierunku zaproszenia.
+$contactsMessage = '';
+$contactFriends = $contactIncoming = $contactOutgoing = $contactSearchResults = [];
+if ($user && $db instanceof PDO && ($_GET['view'] ?? '') === 'contacts') {
+    $db->exec("CREATE TABLE IF NOT EXISTS player_contacts (
+        user_low INT NOT NULL, user_high INT NOT NULL, requested_by INT NOT NULL,
+        status ENUM('pending','accepted') NOT NULL DEFAULT 'pending',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_low,user_high), INDEX contacts_high(user_high,status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $me=(int)$user['id'];
+    if ($_SERVER['REQUEST_METHOD']==='POST' && in_array($_POST['action']??'', ['friend_send','friend_accept','friend_reject','friend_remove','friend_cancel'],true)) {
+        if (!csrf_valid(is_string($_POST['csrf_token']??null)?$_POST['csrf_token']:null)) {
+            $contactsMessage='Sesja wygasła. Odśwież stronę.';
+        } else {
+            $action=$_POST['action'];
+            $target=filter_var($_POST['target']??null,FILTER_VALIDATE_INT);
+            if ($target && $target!==$me) {
+                $low=min($me,$target);$high=max($me,$target);
+                if ($action==='friend_send') {
+                    $check=$db->prepare('SELECT id FROM users WHERE id=? AND active=1');
+                    $check->execute([$target]);
+                    if ($check->fetchColumn()) {
+                        $send=$db->prepare("INSERT IGNORE INTO player_contacts(user_low,user_high,requested_by,status) VALUES (?,?,?,'pending')");
+                        $send->execute([$low,$high,$me]);
+                        $contactsMessage=$send->rowCount()?'Zaproszenie wysłane.':'Zaproszenie lub znajomość już istnieje.';
+                    }
+                } else {
+                    $conditions=[
+                        'friend_accept'=>"status='pending' AND requested_by<>?",
+                        'friend_reject'=>"status='pending' AND requested_by<>?",
+                        'friend_cancel'=>"status='pending' AND requested_by=?",
+                        'friend_remove'=>"status='accepted'"
+                    ];
+                    $condition=$conditions[$action];
+                    $sql=($action==='friend_accept'?'UPDATE player_contacts SET status=\'accepted\'':'DELETE FROM player_contacts')
+                        ." WHERE user_low=? AND user_high=? AND ".$condition;
+                    $params=[$low,$high];
+                    if ($action!=='friend_remove')$params[]=$me;
+                    $stmt=$db->prepare($sql);$stmt->execute($params);
+                    $contactsMessage=$stmt->rowCount()?'Zapisano zmianę.':'Nie znaleziono pasującego zaproszenia lub znajomości.';
+                }
+            } else $contactsMessage='Nieprawidłowy gracz.';
+        }
+    }
+    $list=$db->prepare("SELECT c.status,c.requested_by,u.id,u.login FROM player_contacts c
+      JOIN users u ON u.id=IF(c.user_low=?,c.user_high,c.user_low) AND u.active=1
+      WHERE c.user_low=? OR c.user_high=? ORDER BY u.login");
+    $list->execute([$me,$me,$me]);
+    foreach($list->fetchAll(PDO::FETCH_ASSOC) as $item){
+        if($item['status']==='accepted')$contactFriends[]=$item;
+        elseif((int)$item['requested_by']===$me)$contactOutgoing[]=$item;
+        else $contactIncoming[]=$item;
+    }
+    $search=trim(is_string($_GET['friend_search']??null)?$_GET['friend_search']:'');
+    if($search!==''){
+        $search=mb_substr($search,0,60);
+        $lookup=$db->prepare("SELECT u.id,u.login FROM users u WHERE u.active=1 AND u.id<>? AND u.login LIKE ? ESCAPE '!' ORDER BY u.login LIMIT 20");
+        $lookup->execute([$me,'%'.str_replace(['!','%','_'],['!!','!%','!_'],$search).'%']);
+        $contactSearchResults=$lookup->fetchAll(PDO::FETCH_ASSOC);
+    }
+}
