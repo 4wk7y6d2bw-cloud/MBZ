@@ -697,14 +697,14 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <p class="muted">Wszyscy aktywni gracze · <?= $rankingTotal ?> graczy · 20 na stronę. Ranking według publicznego respektu.</p>
       <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;text-align:left">
-        <thead><tr><th style="padding:12px">Miejsce</th><th style="padding:12px">Gracz</th><th style="padding:12px">Respekt</th><th style="padding:12px">Miasto</th></tr></thead>
+        <thead><tr><th style="padding:12px">Miejsce</th><th style="padding:12px">Gracz</th><th style="padding:12px">Respekt</th><th style="padding:12px">Profesja</th></tr></thead>
         <tbody>
         <?php foreach ($rankingPlayers as $index=>$ranked): ?>
           <tr style="border-top:1px solid #363636;<?= (int)$ranked['id']===(int)$user['id']?'background:#263b2b;':'' ?>">
             <td style="padding:12px">#<?= ($rankingPage-1)*20+$index+1 ?></td>
             <td style="padding:12px;font-weight:700"><?= e($ranked['login']) ?><?= (int)$ranked['id']===(int)$user['id']?' (Ty)':'' ?></td>
             <td style="padding:12px"><?= number_format((int)$ranked['public_respect'],0,'.',' ') ?></td>
-            <td style="padding:12px"><?= e((string)($ranked['current_city']??'—')) ?></td>
+            <td style="padding:12px"><?= e((string)($ranked['profession']??'—')) ?></td>
           </tr>
         <?php endforeach; ?>
         <?php if (!$rankingPlayers): ?><tr><td colspan="4" style="padding:15px">Brak graczy.</td></tr><?php endif; ?>
