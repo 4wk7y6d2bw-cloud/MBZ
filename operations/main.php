@@ -263,12 +263,6 @@ if ($user && $db instanceof PDO && $showProfile) {
     $ownerStmt->execute([$ownerId]);
     $guestbookOwner = $ownerStmt->fetch();
     if ($guestbookOwner) {
-        $publicStmt=$db->prepare('SELECT profession,current_city,public_respect,strength,endurance,intelligence,charisma,cunning FROM player_stats WHERE user_id=?');
-        $publicStmt->execute([(int)$guestbookOwner['id']]);
-        $publicProfile=$publicStmt->fetch() ?: null;
-        $publicRank=get_player_rank($db,(int)$guestbookOwner['id']);
-    }
-    if ($guestbookOwner) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['guestbook_add','guestbook_delete'], true)) {
             if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
                 $guestbookMessage = 'Sesja wygasła. Odśwież stronę.';
@@ -563,21 +557,6 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <div class="stat"><span>Spryt</span><strong><?= (int) $stats['cunning'] ?></strong></div>
             <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
         </div>
-        <?php endif; ?>
-        <?php if ($profileTab === 'overview' && $guestbookOwner && (int)$guestbookOwner['id'] !== (int)$user['id']): ?>
-        <h3>Statystyki gracza</h3>
-        <?php if ($publicProfile): ?>
-        <div class="stats">
-          <div class="stat"><span>Login</span><strong><?= e($guestbookOwner['login']) ?></strong></div>
-          <div class="stat"><span>Miejsce w rankingu</span><strong>#<?= (int)$publicRank ?></strong></div>
-          <div class="stat"><span>Respekt publiczny</span><strong><?= number_format((int)$publicProfile['public_respect'],0,'.',' ') ?> pkt</strong></div>
-          <div class="stat"><span>Profesja</span><strong><?= e($publicProfile['profession'] ?? 'Nie wybrano') ?></strong></div>
-          <div class="stat"><span>Miasto</span><strong><?= e($publicProfile['current_city'] ?? 'Nie wybrano') ?></strong></div>
-          <?php foreach (['strength'=>'Siła','endurance'=>'Wytrzymałość','intelligence'=>'Inteligencja','charisma'=>'Charyzma','cunning'=>'Spryt'] as $key=>$label): ?>
-          <div class="stat"><span><?= $label ?></span><strong><?= (int)$publicProfile[$key] ?></strong></div>
-          <?php endforeach; ?>
-        </div>
-        <?php else: ?><p class="muted">Ten gracz nie ma jeszcze utworzonej postaci.</p><?php endif; ?>
         <?php endif; ?>
         <?php if ($profileTab === 'respect' && $guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id']): ?>
         <h2 style="margin-top:28px">Historia respektu — sezon <?= (int) ($gameState['season'] ?? 1) ?></h2>
