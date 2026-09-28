@@ -164,7 +164,9 @@ if ($showWanted && $user && $db instanceof PDO && $gameState) {
             $wantedKilled=true;
         }
         if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='wanted_kill') {
-            if (!csrf_valid(is_string($_POST['csrf_token']??null)?$_POST['csrf_token']:null)) {
+            if ($activeTravel) {
+                $wantedMessage='Nie możesz atakować podczas podróży.';
+            } elseif (!csrf_valid(is_string($_POST['csrf_token']??null)?$_POST['csrf_token']:null)) {
                 $wantedMessage='Sesja wygasła. Odśwież stronę.';
             } elseif ($break || !$wantedLeader || $wantedKilled || (int)$wantedLeader['id']===(int)$user['id']) {
                 $wantedMessage='Tego celu nie można teraz zaatakować.';
