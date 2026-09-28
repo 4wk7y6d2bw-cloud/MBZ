@@ -262,6 +262,9 @@ if ($user && $db instanceof PDO && $showProfile) {
     $ownerStmt = $db->prepare('SELECT id, login FROM users WHERE id=? AND active=1');
     $ownerStmt->execute([$ownerId]);
     $guestbookOwner = $ownerStmt->fetch();
+    if ($guestbookOwner && $profileTab === 'respect' && $gameState) {
+        $respectHistory = get_respect_history($db, (int)$guestbookOwner['id'], (int)$gameState['season']);
+    }
     if ($guestbookOwner && (int)$guestbookOwner['id'] !== (int)$user['id']) {
         $publicStmt=$db->prepare('SELECT profession,current_city,public_respect FROM player_stats WHERE user_id=?');
         $publicStmt->execute([(int)$guestbookOwner['id']]);
@@ -542,7 +545,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <nav class="profile-tabs" aria-label="Zakładki profilu">
           <a class="<?= $profileTab === 'overview' ? 'active' : '' ?>" href="./?page=main&amp;view=profile&amp;player=<?= $profileId ?>">Profil</a>
           <a class="<?= $profileTab === 'guestbook' ? 'active' : '' ?>" href="./?page=main&amp;view=profile&amp;player=<?= $profileId ?>&amp;tab=guestbook#guestbook">Księga gości</a>
-          <?php if ($guestbookOwner && $profileId === (int)$user['id']): ?>
+          <?php if ($guestbookOwner): ?>
           <a class="<?= $profileTab === 'respect' ? 'active' : '' ?>" href="./?page=main&amp;view=profile&amp;player=<?= $profileId ?>&amp;tab=respect">Respekt dni</a>
           <?php endif; ?>
         </nav>
@@ -573,7 +576,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <div class="stat"><span>Miasto</span><strong><?= e($publicProfile['current_city'] ?? 'Nie wybrano') ?></strong></div>
         </div>
         <?php endif; ?>
-        <?php if ($profileTab === 'respect' && $guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id']): ?>
+        <?php if ($profileTab === 'respect' && $guestbookOwner): ?>
         <h2 style="margin-top:28px">Historia respektu — sezon <?= (int) ($gameState['season'] ?? 1) ?></h2>
         <p class="muted">Wynik zapisywany na koniec każdego dnia gry (co 4 godziny).</p>
         <?php if ($respectHistory): ?>
