@@ -66,18 +66,31 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
     ? $_GET['location'] : '';
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 $showRanking = ($_GET['view'] ?? '') === 'ranking';
+$rankingSearch = trim(is_string($_GET['nick'] ?? null) ? $_GET['nick'] : '');
+$rankingSearch = mb_substr($rankingSearch, 0, 60);
 $rankingPage = max(1, min(100000, (int)($_GET['p'] ?? 1)));
 $rankingPlayers = [];
 $rankingTotal = 0;
 $rankingPages = 1;
 if ($showRanking && $user && $db instanceof PDO) {
-    $rankingTotal = (int)$db->query('SELECT COUNT(*) FROM player_stats p JOIN users u ON u.id=p.user_id WHERE u.active=1')->fetchColumn();
+    $rankingWhere = 'FROM player_stats p JOIN users u ON u.id=p.user_id WHERE u.active=1';
+    $rankingParams = [];
+    if ($rankingSearch !== '') {
+        $rankingWhere .= " AND u.login LIKE :nick ESCAPE '!'";
+        $rankingParams[':nick'] = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $rankingSearch) . '%';
+    }
+    $rankingCountQuery = $db->prepare('SELECT COUNT(*) ' . $rankingWhere);
+    $rankingCountQuery->execute($rankingParams);
+    $rankingTotal = (int)$rankingCountQuery->fetchColumn();
     $rankingPages = max(1,(int)ceil($rankingTotal/20));
     $rankingPage = min($rankingPage,$rankingPages);
     $rankingOffset = ($rankingPage-1)*20;
-    $rankingQuery = $db->prepare('SELECT u.id,u.login,p.public_respect,p.current_city,p.profession
-      FROM player_stats p JOIN users u ON u.id=p.user_id
-      WHERE u.active=1 ORDER BY p.public_respect DESC,p.user_id ASC LIMIT 20 OFFSET :offset');
+    $rankingQuery = $db->prepare('SELECT u.id,u.login,p.public_respect,p.profession,
+      (SELECT COUNT(*)+1 FROM player_stats other
+       WHERE other.public_respect > p.public_respect
+          OR (other.public_respect=p.public_respect AND other.user_id<p.user_id)) AS global_rank '
+      . $rankingWhere . ' ORDER BY p.public_respect DESC,p.user_id ASC LIMIT 20 OFFSET :offset');
+    foreach ($rankingParams as $key=>$value) $rankingQuery->bindValue($key,$value,PDO::PARAM_STR);
     $rankingQuery->bindValue(':offset',$rankingOffset,PDO::PARAM_INT);
     $rankingQuery->execute();
     $rankingPlayers = $rankingQuery->fetchAll();
@@ -694,27 +707,34 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card location-panel">
       <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
       <h2>🏆 Ranking graczy</h2>
+      <form method="get" action="./" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 20px">
+        <input type="hidden" name="page" value="main">
+        <input type="hidden" name="view" value="ranking">
+        <input type="search" name="nick" aria-label="Wyszukaj gracza po nicku" placeholder="Wpisz nick gracza..." value="<?= e($rankingSearch) ?>" maxlength="60" style="flex:1;min-width:170px;padding:12px;border:1px solid #555;border-radius:8px;background:#111;color:#fff">
+        <button type="submit">Szukaj</button>
+        <?php if ($rankingSearch !== ''): ?><a class="button secondary" href="./?page=main&amp;view=ranking">Wyczyść</a><?php endif; ?>
+      </form>
       <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;text-align:left">
         <thead><tr><th style="padding:12px">Miejsce</th><th style="padding:12px">Gracz</th><th style="padding:12px">Respekt</th><th style="padding:12px">Profesja</th></tr></thead>
         <tbody>
         <?php foreach ($rankingPlayers as $index=>$ranked): ?>
           <tr style="border-top:1px solid #363636;<?= (int)$ranked['id']===(int)$user['id']?'background:#263b2b;':'' ?>">
-            <td style="padding:12px">#<?= ($rankingPage-1)*20+$index+1 ?></td>
+            <td style="padding:12px">#<?= (int)$ranked['global_rank'] ?></td>
             <td style="padding:12px;font-weight:700"><?= e($ranked['login']) ?><?= (int)$ranked['id']===(int)$user['id']?' (Ty)':'' ?></td>
             <td style="padding:12px"><?= number_format((int)$ranked['public_respect'],0,'.',' ') ?></td>
             <td style="padding:12px"><?= e((string)($ranked['profession']??'—')) ?></td>
           </tr>
         <?php endforeach; ?>
-        <?php if (!$rankingPlayers): ?><tr><td colspan="4" style="padding:15px">Brak graczy.</td></tr><?php endif; ?>
+        <?php if (!$rankingPlayers): ?><tr><td colspan="4" style="padding:15px"><?= $rankingSearch !== '' ? 'Nie znaleziono gracza o podanym nicku.' : 'Brak graczy.' ?></td></tr><?php endif; ?>
         </tbody>
       </table>
       </div>
       <?php if ($rankingPages>1): ?>
       <nav aria-label="Strony rankingu" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px">
-        <?php if ($rankingPage>1): ?><a class="button secondary" href="./?page=main&amp;view=ranking&amp;p=<?= $rankingPage-1 ?>">← Poprzednia</a><?php endif; ?>
+        <?php if ($rankingPage>1): ?><a class="button secondary" href="./?page=main&amp;view=ranking&amp;nick=<?= urlencode($rankingSearch) ?>&amp;p=<?= $rankingPage-1 ?>">← Poprzednia</a><?php endif; ?>
         <span>Strona <?= $rankingPage ?> z <?= $rankingPages ?></span>
-        <?php if ($rankingPage<$rankingPages): ?><a class="button secondary" href="./?page=main&amp;view=ranking&amp;p=<?= $rankingPage+1 ?>">Następna →</a><?php endif; ?>
+        <?php if ($rankingPage<$rankingPages): ?><a class="button secondary" href="./?page=main&amp;view=ranking&amp;nick=<?= urlencode($rankingSearch) ?>&amp;p=<?= $rankingPage+1 ?>">Następna →</a><?php endif; ?>
       </nav>
       <?php endif; ?>
     </section>
