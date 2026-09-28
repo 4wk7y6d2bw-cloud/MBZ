@@ -135,7 +135,7 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                 $rob->execute([$streetReward,(int)$user['id']]);
                 $firstDailyRobbery = award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day']);
                 $streetMessage = 'Rabunek udany! +'.$streetReward.' $ i +1 do każdej statystyki. -5% energii.'
-                    . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 kredyt!' : '');
+                    . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
             }
             $db->commit();
             $stats = get_player_stats($db,(int)$user['id']);
@@ -564,7 +564,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <div class="stat"><span>Inteligencja</span><strong><?= (int) $stats['intelligence'] ?></strong></div>
             <div class="stat"><span>Charyzma</span><strong><?= (int) $stats['charisma'] ?></strong></div>
             <div class="stat"><span>Spryt</span><strong><?= (int) $stats['cunning'] ?></strong></div>
-            <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
+            <div class="stat"><span>Sztabki złota</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
         </div>
         <?php endif; ?>
         <?php if ($profileTab === 'overview' && $guestbookOwner && (int)$guestbookOwner['id'] !== (int)$user['id'] && $publicProfile): ?>
@@ -974,7 +974,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php if ($stats): ?>
             <div class="stats">
                 <div class="stat"><span>Kasa</span><strong><?= number_format((int) $stats['cash'], 0, '.', ',') ?> $</strong></div>
-        <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
+        <div class="stat"><span>Sztabki złota</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
                 <div class="stat"><span>Respekt</span><strong><?= (int) $stats['respect'] ?> pkt</strong></div>
                 <div class="stat"><span>Miejsce</span><strong>#<?= (int) ($playerRank ?? 0) ?></strong></div>
                 <div class="stat"><span>Profesja</span><strong><?= $stats['profession'] === null ? 'Nie wybrano' : e($stats['profession']) ?></strong></div>
@@ -1053,7 +1053,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         'Energia': ['energy', v => v + '%'],
         'Bilety': ['tickets', v => v + '/25'],
         'Respekt': ['respect', v => v + ' pkt'],
-        'Kredyty': ['credits', v => Number(v).toLocaleString('en-US')],
+        'Sztabki złota': ['credits', v => Number(v).toLocaleString('en-US')],
         'Siła': ['strength', String],
         'Wytrzymałość': ['endurance', String],
         'Inteligencja': ['intelligence', String],
