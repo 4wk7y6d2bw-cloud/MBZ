@@ -694,7 +694,6 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card location-panel">
       <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
       <h2>🏆 Ranking graczy</h2>
-      <p class="muted">Wszyscy aktywni gracze · <?= $rankingTotal ?> graczy · 20 na stronę. Ranking według publicznego respektu.</p>
       <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;text-align:left">
         <thead><tr><th style="padding:12px">Miejsce</th><th style="padding:12px">Gracz</th><th style="padding:12px">Respekt</th><th style="padding:12px">Profesja</th></tr></thead>
