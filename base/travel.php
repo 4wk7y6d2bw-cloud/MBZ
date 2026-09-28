@@ -27,9 +27,11 @@ function travel_quote(array $cities,string $from,string $to,int $respect): ?arra
  if (!isset($cities[$from],$cities[$to]) || $from===$to) return null;
  $km=travel_distance($cities[$from],$cities[$to]);
  $extra=travel_extra_rate($km);
+ // Dystans podnosi cenę płynnie, a minimalna dopłata różnicuje także początkujących graczy.
+ $distanceFee=max((int)ceil($km/65)*3,(int)ceil(max(0,$respect)*$km/10000));
  return ['km'=>$km,'extra'=>$extra,'rate'=>5+$extra,
-   'price'=>max(1,(int)ceil(max(0,$respect)*(5+$extra)/100)),
-   'minutes'=>min(10,5+(int)floor($km/120))];
+   'price'=>max(1,(int)ceil(max(0,$respect)*0.05)+$distanceFee),
+   'seconds'=>min(1200,300+(int)round($km*1.5))];
 }
 $db->exec('CREATE TABLE IF NOT EXISTS player_travel (
  user_id INT NOT NULL PRIMARY KEY,
@@ -79,8 +81,8 @@ if ($showTravel && $_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')
     $pay->execute([$quote['price'],(int)$user['id'],$quote['price']]);
     if ($pay->rowCount()!==1) $travelMessage='Nie udało się pobrać opłaty.';
     else {
-     $insert=$db->prepare('INSERT INTO player_travel(user_id,destination,arrives_at) VALUES(?,?,DATE_ADD(NOW(),INTERVAL ? MINUTE))');
-     $insert->execute([(int)$user['id'],$destination,$quote['minutes']]);
+     $insert=$db->prepare('INSERT INTO player_travel(user_id,destination,arrives_at) VALUES(?,?,DATE_ADD(NOW(),INTERVAL ? SECOND))');
+     $insert->execute([(int)$user['id'],$destination,$quote['seconds']]);
      $travelMessage='Podróż rozpoczęta.';
      $stats['cash']=(int)$fresh['cash']-$quote['price'];
     }
