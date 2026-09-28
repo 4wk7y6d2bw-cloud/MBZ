@@ -167,6 +167,10 @@ $wantedKilled = false;
 $wantedMessage = '';
 $wantedReward = 0;
 $wantedRewardPerRespect = 0.5;
+$killerLeader = null;
+$killerReward = 0;
+$killerKilled = false;
+$killerMessage = '';
 if ($showWanted && $user && $db instanceof PDO && $gameState) {
     $db->exec('CREATE TABLE IF NOT EXISTS wanted_bounties (
         season INT NOT NULL,
@@ -176,6 +180,12 @@ if ($showWanted && $user && $db instanceof PDO && $gameState) {
         killed_by INT DEFAULT NULL,
         killed_at DATETIME DEFAULT NULL,
         PRIMARY KEY (season,game_day)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    $db->exec('CREATE TABLE IF NOT EXISTS wanted_killer_bounties (
+        season INT NOT NULL, game_day INT NOT NULL, target_id INT NOT NULL,
+        kill_count INT NOT NULL DEFAULT 0, reward BIGINT NOT NULL DEFAULT 0,
+        killed_by INT DEFAULT NULL, killed_at DATETIME DEFAULT NULL,
+        PRIMARY KEY(season,game_day)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
     $day=(int)$gameState['game_day'];
     $season=(int)$gameState['season'];
@@ -242,6 +252,52 @@ if ($showWanted && $user && $db instanceof PDO && $gameState) {
                     $wantedMessage='Poszukiwany zabity! Otrzymujesz '.number_format($wantedReward,0,'.',' ').' $.';
                     $stats=get_player_stats($db,(int)$user['id']);
                 } else $wantedMessage='Nagroda została już odebrana.';
+            }
+        }
+        // Drugi cel WANTED: gracz z największą liczbą zabójstw w ostatnim zakończonym dniu.
+        $killerBountyStmt=$db->prepare('SELECT * FROM wanted_killer_bounties WHERE season=? AND game_day=? FOR UPDATE');
+        $killerBountyStmt->execute([$season,$day]);
+        $killerBounty=$killerBountyStmt->fetch();
+        if (!$killerBounty) {
+            $killTargetDay=$break ? $day : $day-1;
+            $killTargetSeason=$season;
+            if ($killTargetDay<1) { $killTargetSeason=$season-1; $killTargetDay=60; }
+            $killerQuery=$db->prepare('SELECT u.id,u.login,COUNT(*) AS kill_count FROM player_kills k JOIN users u ON u.id=k.killer_id AND u.active=1 WHERE k.season=? AND k.game_day=? GROUP BY k.killer_id,u.id,u.login ORDER BY kill_count DESC,u.id ASC LIMIT 1');
+            $killerQuery->execute([$killTargetSeason,$killTargetDay]);
+            $killerCandidate=$killerQuery->fetch();
+            if ($killerCandidate && (int)$killerCandidate['kill_count']>0) {
+                // Każde zabójstwo zwiększa nagrodę o 1 000 $.
+                $killerReward=(int)$killerCandidate['kill_count']*1000;
+                $makeKiller=$db->prepare('INSERT INTO wanted_killer_bounties(season,game_day,target_id,kill_count,reward) VALUES (?,?,?,?,?)');
+                $makeKiller->execute([$season,$day,(int)$killerCandidate['id'],(int)$killerCandidate['kill_count'],$killerReward]);
+                $killerBounty=['target_id'=>(int)$killerCandidate['id'],'kill_count'=>(int)$killerCandidate['kill_count'],'reward'=>$killerReward,'killed_by'=>null];
+                $killerLeader=$killerCandidate;
+            }
+        }
+        if ($killerBounty) {
+            if (!$killerLeader) {
+                $killerUser=$db->prepare('SELECT id,login FROM users WHERE id=?');
+                $killerUser->execute([(int)$killerBounty['target_id']]);
+                $killerLeader=$killerUser->fetch();
+            }
+            $killerReward=(int)$killerBounty['reward'];
+            $killerKilled=$killerBounty['killed_by']!==null;
+        }
+        if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='wanted_killer_kill') {
+            if ($activeTravel) $killerMessage='Nie możesz atakować podczas podróży.';
+            elseif (!csrf_valid(is_string($_POST['csrf_token']??null)?$_POST['csrf_token']:null)) $killerMessage='Sesja wygasła. Odśwież stronę.';
+            elseif ($break || !$killerLeader || $killerKilled || (int)$killerLeader['id']===(int)$user['id']) $killerMessage='Tego celu nie można teraz zaatakować.';
+            elseif ((int)($_POST['target_id']??0)!==(int)$killerLeader['id']) $killerMessage='Cel WANTED zmienił się. Odśwież stronę.';
+            else {
+                $claimKiller=$db->prepare('UPDATE wanted_killer_bounties SET killed_by=?,killed_at=NOW() WHERE season=? AND game_day=? AND target_id=? AND killed_by IS NULL');
+                $claimKiller->execute([(int)$user['id'],$season,$day,(int)$killerLeader['id']]);
+                if ($claimKiller->rowCount()===1) {
+                    $payKiller=$db->prepare('UPDATE player_stats SET cash=cash+? WHERE user_id=?');
+                    $payKiller->execute([$killerReward,(int)$user['id']]);
+                    $killerKilled=true;
+                    $killerMessage='Najgroźniejszy morderca zabity! Otrzymujesz '.number_format($killerReward,0,'.',' ').' $.';
+                    $stats=get_player_stats($db,(int)$user['id']);
+                } else $killerMessage='Nagroda została już odebrana.';
             }
         }
         $db->commit();
@@ -878,6 +934,25 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php endif; ?>
       <?php else: ?>
         <p class="muted">Brak gracza z dodatnim przyrostem respektu w ostatnim zakończonym dniu.</p>
+      <?php endif; ?>
+
+      <h3 style="margin-top:28px">Najgroźniejszy morderca dnia</h3>
+      <p class="muted">Drugi cel: gracz, który miał najwięcej zabójstw w ostatnim zakończonym dniu gry. Nagroda rośnie o 1 000 $ za każde jego zabójstwo.</p>
+      <?php if ($killerMessage!==''): ?><p class="stat"><?= e($killerMessage) ?></p><?php endif; ?>
+      <?php if ($killerKilled && $killerLeader): ?>
+        <div class="stat"><strong>CEL ZABITY</strong><span><?= e($killerLeader['login']) ?></span><span>Nagroda została odebrana.</span></div>
+      <?php elseif ($killerLeader): ?>
+        <div class="stat">
+          <strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$killerLeader['id'] ?>"><?= e($killerLeader['login']) ?></a></strong>
+          <span>Zabójstwa w zakończonym dniu: <?= (int)($killerBounty['kill_count']??$killerLeader['kill_count']??0) ?></span>
+          <strong>Nagroda: <?= number_format($killerReward,0,'.',' ') ?> $</strong>
+        </div>
+        <?php if ((int)$killerLeader['id']===(int)$user['id']): ?><p class="muted">Nie możesz zaatakować samego siebie.</p>
+        <?php elseif ($break): ?><p class="muted">Podczas przerwy między sezonami ataki są wyłączone.</p>
+        <?php elseif ($activeTravel): ?><p class="muted">Atak niedostępny podczas podróży.</p>
+        <?php else: ?><form method="post" action="./?page=main&amp;view=wanted"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="wanted_killer_kill"><input type="hidden" name="target_id" value="<?= (int)$killerLeader['id'] ?>"><button type="submit">Zabij mordercę i odbierz nagrodę</button></form><?php endif; ?>
+      <?php else: ?>
+        <p class="muted">Brak zabójstw graczy w ostatnim zakończonym dniu.</p>
       <?php endif; ?>
     </section>
     <?php elseif ($showMissions): ?>
