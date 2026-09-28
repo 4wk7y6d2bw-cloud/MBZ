@@ -762,7 +762,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     // Approximate positions on a schematic outline of Poland; display only (travel comes later).
     $db->exec('CREATE TABLE IF NOT EXISTS city_raids (city VARCHAR(64) PRIMARY KEY, active TINYINT NOT NULL DEFAULT 0)');
     $raidCities = $db->query('SELECT city FROM city_raids WHERE active=1')->fetchAll(PDO::FETCH_COLUMN);
-    $unavailableCities = ['Białystok', 'Kraków']; // Map display only; travel availability will be wired separately.
+    $unavailableCities = array_values(array_diff(array_keys($travelCities), array_keys($unlockedCities))); // Te same blokady co w podróżach i misjach.
     $mapCities = [
       ['Szczecin', 105, 163], ['Gdańsk', 260, 65], ['Olsztyn', 348, 126],
       ['Białystok', 445, 184], ['Bydgoszcz', 236, 184], ['Poznań', 168, 244],
