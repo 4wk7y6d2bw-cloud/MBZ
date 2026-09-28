@@ -775,6 +775,30 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
       <h2>Kontakty</h2>
       <?php if ($contactsMessage): ?><p><?= e($contactsMessage) ?></p><?php endif; ?>
+      <?php if ($privateChatFriend): ?>
+      <div class="card" style="margin:18px 0">
+        <h3>PW — <?= e($privateChatFriend['login']) ?></h3>
+        <div style="max-height:360px;overflow:auto;margin:12px 0">
+          <?php if (!$privateMessages): ?><p class="muted">Brak wiadomości. Napisz pierwszą.</p><?php endif; ?>
+          <?php foreach($privateMessages as $pm): ?>
+          <div style="margin:8px 0;padding:10px;border:1px solid #333;border-radius:8px">
+            <strong><?= (int)$pm['sender_id']===(int)$user['id'] ? 'Ty' : e($pm['sender_login']) ?></strong>
+            <span class="muted"> · <?= e($pm['created_at']) ?></span>
+            <div style="margin-top:5px;white-space:pre-wrap"><?= e($pm['body']) ?></div>
+          </div>
+          <?php endforeach; ?>
+        </div>
+        <?php if (!$activeTravel): ?>
+        <form method="post" action="./?page=main&amp;view=contacts&amp;chat=<?= (int)$privateChatFriend['id'] ?>">
+          <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+          <input type="hidden" name="action" value="private_message_send">
+          <input type="hidden" name="target" value="<?= (int)$privateChatFriend['id'] ?>">
+          <textarea name="body" maxlength="500" required rows="3" placeholder="Napisz wiadomość..." style="width:100%;background:#111;color:white;padding:12px;border:1px solid #555;border-radius:8px"></textarea>
+          <button class="button" type="submit" style="margin-top:8px">Wyślij PW</button>
+        </form>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
       <form method="get" action="./" style="display:flex;gap:10px;flex-wrap:wrap;margin:18px 0">
         <input type="hidden" name="page" value="main"><input type="hidden" name="view" value="contacts">
         <input name="friend_search" maxlength="60" placeholder="Wyszukaj gracza po nicku" value="<?= e($_GET['friend_search']??'') ?>" style="padding:10px;background:#111;color:white;border:1px solid #555;border-radius:8px;flex:1">
@@ -800,7 +824,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <?php endforeach; ?>
       <?php endif; ?>
       <?php foreach ([
-        ['Znajomi',$contactFriends,'friend_remove'=>'Usuń znajomego'],
+        ['Znajomi',$contactFriends,'private_chat'=>'Napisz PW','friend_remove'=>'Usuń znajomego'],
         ['Otrzymane zaproszenia',$contactIncoming,'friend_accept'=>'Akceptuj','friend_reject'=>'Odrzuć'],
         ['Wysłane zaproszenia',$contactOutgoing,'friend_cancel'=>'Anuluj']
       ] as $group):
@@ -813,12 +837,16 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&amp;view=profile&amp;player=<?= (int)$person['id'] ?>"><?= e($person['login']) ?></a>
         <?php if (!$activeTravel): ?><div style="display:flex;gap:8px;flex-wrap:wrap">
         <?php foreach($group as $action=>$label): ?>
+        <?php if ($action==='private_chat'): ?>
+          <a class="button" href="./?page=main&amp;view=contacts&amp;chat=<?= (int)$person['id'] ?>"><?= e($label) ?></a>
+        <?php else: ?>
         <form method="post" action="./?page=main&amp;view=contacts">
           <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
           <input type="hidden" name="action" value="<?= e($action) ?>">
           <input type="hidden" name="target" value="<?= (int)$person['id'] ?>">
           <button class="button secondary" type="submit"><?= e($label) ?></button>
         </form>
+        <?php endif; ?>
         <?php endforeach; ?></div><?php endif; ?>
       </div>
       <?php endforeach; ?>
