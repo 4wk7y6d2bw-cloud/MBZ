@@ -823,7 +823,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
                 if (labels[label]) {
                     const [key, format] = labels[label];
                     next = format(data.player[key]);
-                } else if (label === 'Miejsce w rankingu') next = '#' + (data.rank ?? 0);
+                } else if (label === 'Miejsce w rankingu' || label === 'Miejsce') next = '#' + (data.rank ?? 0);
                 else if (label === 'Dzień gry') next = data.game.game_day + '/60';
                 else if (label === 'Sezon gry') next = String(data.game.season);
                 if (next !== undefined && target.textContent !== next) target.textContent = next;
@@ -835,9 +835,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         } catch (_) { /* Keep existing values during a network error. */ }
         finally { busy = false; }
     };
-    // A standard PHP host cannot push SQL changes to the browser without a persistent connection.
-    // This light check is paused when the tab is hidden.
-    setInterval(refreshStats, 30000);
+    // Lightweight AJAX version check; unchanged data returns HTTP 204.
+    // Paused when the tab is hidden.
+    setInterval(refreshStats, 5000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshStats(); });
     window.addEventListener('focus', refreshStats);
     refreshStats();
