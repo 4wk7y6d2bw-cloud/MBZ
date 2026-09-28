@@ -14,6 +14,15 @@ if ($stats && $stats['profession'] !== null && $stats['current_city'] !== null) 
     redirect('./');
 }
 
+$professionDescriptions = [
+ 'Morderca' => 'Silniejszy w walce z graczami. Zabójstwa pomagają mu odzyskiwać energię.',
+ 'Złodziej' => 'Zdobywa większe łupy i ma większe szanse powodzenia napadów.',
+ 'Biznesmen' => 'Taniej inwestuje w budynki i może posiadać więcej nieruchomości.',
+ 'Gangster' => 'Ma wszechstronne umiejętności, lepsze warunki w więzieniu i mniejsze straty po nieudanych napadach.',
+ 'Diler' => 'Zarabia więcej na handlu narkotykami oraz przewozi i magazynuje większe ilości towaru.',
+ 'Alfons' => 'Więcej zarabia na własnych lokalach i zatrudnia w nich dodatkowych pracowników.',
+];
+
 $professions = [
     'Morderca',
     'Złodziej',
@@ -88,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .profession, .city { display: block; }
         .profession input, .city input { position: absolute; opacity: 0; pointer-events: none; }
         .profession span, .city span { display: block; padding: 18px; border: 1px solid #444; border-radius: 10px; background: #111; cursor: pointer; text-align: center; font-weight: 700; }
-        .profession input:checked + span, .city input:checked + span { border-color: #fff; background: #292929; }
+        .profession small { display:block; margin-top:8px; color:#bdbdbd; font-size:12px; font-weight:400; line-height:1.5; }\n        .profession input:checked + span, .city input:checked + span { border-color: #fff; background: #292929; }
         button { width: 100%; margin-top: 24px; padding: 14px 16px; border: 0; border-radius: 8px; background: #fff; color: #111; cursor: pointer; font-weight: 700; }
         .error { padding: 12px 14px; margin-bottom: 18px; border-radius: 8px; background: #3a1717; }
         @media (max-width: 600px) { .professions, .cities { grid-template-columns: 1fr; } }
@@ -117,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php foreach ($professions as $profession): ?>
                         <label class="profession">
                             <input type="radio" name="profession" value="<?= e($profession) ?>" required>
-                            <span><?= e($profession) ?></span>
+                            <span><?= e($profession) ?><small><?= e($professionDescriptions[$profession]) ?></small></span>
                         </label>
                     <?php endforeach; ?>
                 </div>
