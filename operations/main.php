@@ -629,7 +629,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
               if (!$quote) continue;
               $cityUnlocked=isset($unlockedCities[$destination]);
             ?>
-              <option value="<?= e($destination) ?>" <?= $cityUnlocked ? '' : 'disabled' ?>><?= e($destination) ?><?= $cityUnlocked ? '' : ' 🔒 (odblokuj w misjach)' ?></option>
+              <?php if ($cityUnlocked): ?>
+              <option value="<?= e($destination) ?>"><?= e($destination) ?></option>
+              <?php endif; ?>
             <?php endforeach; ?>
           </select>
           <div id="travelDetails" class="stat" style="margin-top:16px" hidden>
