@@ -613,7 +613,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     </section>
     <?php elseif ($showWanted): ?>
     <section class="card location-panel">
-      <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← <?= $activeTravel ? 'Podróże' : 'Powrót do menu' ?></a>
       <h2>WANTED — dzień <?= (int)$gameState['game_day'] ?></h2>
       <p class="muted">Cel: gracz z największym przyrostem respektu w ostatnim zakończonym dniu gry. Cel nie zmienia się w trakcie dnia.</p>
       <?php if ($wantedMessage !== ''): ?><p class="stat"><?= e($wantedMessage) ?></p><?php endif; ?>
@@ -629,6 +629,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <p class="muted">Nie możesz zaatakować samego siebie.</p>
         <?php elseif ((int)$gameState['is_break']===1): ?>
           <p class="muted">Podczas przerwy między sezonami ataki są wyłączone.</p>
+        <?php elseif ($activeTravel): ?>
+          <p class="muted">Atak niedostępny podczas podróży.</p>
         <?php else: ?>
           <form method="post" action="./?page=main&amp;view=wanted">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -678,6 +680,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <?php endif; ?>
             <?php if ($done): ?>
                 <strong>Ukończona — nagroda odebrana</strong>
+            <?php elseif ($respectOk && $cashOk && $activeTravel): ?>
+                <p class="muted">Nagrodę odbierzesz po zakończeniu podróży.</p>
             <?php elseif ($respectOk && $cashOk): ?>
                 <form method="post" action="./?page=main&amp;view=missions">
                     <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
