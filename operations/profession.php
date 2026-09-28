@@ -97,7 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .profession, .city { display: block; }
         .profession input, .city input { position: absolute; opacity: 0; pointer-events: none; }
         .profession span, .city span { display: block; padding: 18px; border: 1px solid #444; border-radius: 10px; background: #111; cursor: pointer; text-align: center; font-weight: 700; }
-        .profession small { display:block; margin-top:8px; color:#bdbdbd; font-size:12px; font-weight:400; line-height:1.5; }\n        .profession input:checked + span, .city input:checked + span { border-color: #fff; background: #292929; }
+        .profession small { display:block; margin-top:8px; color:#bdbdbd; font-size:12px; font-weight:400; line-height:1.5; }
+        .profession input:checked + span, .city input:checked + span { border-color: #52dc8b; background: #203b2c; box-shadow: 0 0 0 2px rgba(82,220,139,.22); }
+        .profession input:focus-visible + span, .city input:focus-visible + span { outline: 2px solid #52dc8b; outline-offset: 3px; }
         button { width: 100%; margin-top: 24px; padding: 14px 16px; border: 0; border-radius: 8px; background: #fff; color: #111; cursor: pointer; font-weight: 700; }
         .error { padding: 12px 14px; margin-bottom: 18px; border-radius: 8px; background: #3a1717; }
         @media (max-width: 600px) { .professions, .cities { grid-template-columns: 1fr; } }
