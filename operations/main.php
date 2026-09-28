@@ -109,6 +109,7 @@ if ($activeTravel) {
     }
 }
 
+require __DIR__ . '/../base/contacts.php';
 require_once __DIR__ . '/../base/robbery_rewards.php';
 $streetMessage = '';
 $streetReward = null;
@@ -756,11 +757,64 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       </nav>
       <?php endif; ?>
     </section>
-    <?php elseif (($_GET['view'] ?? '') === 'contacts' || ($_GET['view'] ?? '') === 'market'): ?>
+    <?php elseif (($_GET['view'] ?? '') === 'contacts'): ?>
     <section class="card location-panel">
       <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
-      <h2><?= ($_GET['view'] ?? '') === 'contacts' ? 'Kontakty' : 'Rynek' ?></h2>
-      <p class="muted">Ta zakładka jest w przygotowaniu.</p>
+      <h2>Kontakty</h2>
+      <?php if ($contactsMessage): ?><p><?= e($contactsMessage) ?></p><?php endif; ?>
+      <form method="get" action="./" style="display:flex;gap:10px;flex-wrap:wrap;margin:18px 0">
+        <input type="hidden" name="page" value="main"><input type="hidden" name="view" value="contacts">
+        <input name="friend_search" maxlength="60" placeholder="Wyszukaj gracza po nicku" value="<?= e($_GET['friend_search']??'') ?>" style="padding:10px;background:#111;color:white;border:1px solid #555;border-radius:8px;flex:1">
+        <button class="button" type="submit">Szukaj</button>
+      </form>
+      <?php if (trim((string)($_GET['friend_search']??''))!==''): ?>
+      <h3>Wyniki wyszukiwania</h3>
+      <?php if (!$contactSearchResults): ?><p class="muted">Nie znaleziono graczy.</p><?php endif; ?>
+      <?php foreach($contactSearchResults as $person):
+        $already=false;
+        foreach(array_merge($contactFriends,$contactIncoming,$contactOutgoing) as $existing)if((int)$existing['id']===(int)$person['id'])$already=true;
+      ?>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0">
+        <a href="./?page=main&amp;view=profile&amp;player=<?= (int)$person['id'] ?>"><?= e($person['login']) ?></a>
+        <?php if ($already): ?><span class="muted">Znajomy lub zaproszenie oczekujące</span>
+        <?php elseif (!$activeTravel): ?>
+        <form method="post" action="./?page=main&amp;view=contacts">
+          <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+          <input type="hidden" name="action" value="friend_send"><input type="hidden" name="target" value="<?= (int)$person['id'] ?>">
+          <button class="button" type="submit">Zaproś</button>
+        </form><?php endif; ?>
+      </div>
+      <?php endforeach; ?>
+      <?php endif; ?>
+      <?php foreach ([
+        ['Znajomi',$contactFriends,'friend_remove'=>'Usuń znajomego'],
+        ['Otrzymane zaproszenia',$contactIncoming,'friend_accept'=>'Akceptuj','friend_reject'=>'Odrzuć'],
+        ['Wysłane zaproszenia',$contactOutgoing,'friend_cancel'=>'Anuluj']
+      ] as $group):
+        $heading=$group[0];$people=$group[1];unset($group[0],$group[1]);
+      ?>
+      <h3 style="margin-top:25px"><?= e($heading) ?> (<?= count($people) ?>)</h3>
+      <?php if (!$people): ?><p class="muted">Brak.</p><?php endif; ?>
+      <?php foreach($people as $person): ?>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid #333">
+        <a href="./?page=main&amp;view=profile&amp;player=<?= (int)$person['id'] ?>"><?= e($person['login']) ?></a>
+        <?php if (!$activeTravel): ?><div style="display:flex;gap:8px;flex-wrap:wrap">
+        <?php foreach($group as $action=>$label): ?>
+        <form method="post" action="./?page=main&amp;view=contacts">
+          <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+          <input type="hidden" name="action" value="<?= e($action) ?>">
+          <input type="hidden" name="target" value="<?= (int)$person['id'] ?>">
+          <button class="button secondary" type="submit"><?= e($label) ?></button>
+        </form>
+        <?php endforeach; ?></div><?php endif; ?>
+      </div>
+      <?php endforeach; ?>
+      <?php endforeach; ?>
+    </section>
+    <?php elseif (($_GET['view'] ?? '') === 'market'): ?>
+    <section class="card location-panel">
+      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
+      <h2>Rynek</h2><p class="muted">Ta zakładka jest w przygotowaniu.</p>
     </section>
     <?php elseif ($showWanted): ?>
     <section class="card location-panel">
