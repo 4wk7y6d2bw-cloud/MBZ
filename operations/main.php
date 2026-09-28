@@ -69,6 +69,20 @@ $showTravel = ($_GET['view'] ?? '') === 'travel';
 $activeTravel = null;
 $travelMessage = '';
 if ($user && $db instanceof PDO) require __DIR__ . '/../base/travel.php';
+if ($activeTravel) {
+    // Podróż: tylko odczyt dozwolonych zakładek. Blokada po stronie serwera,
+    // więc bezpośrednie adresy URL i formularze również nie omijają ograniczeń.
+    $allowedTravelViews = ['profile', 'wanted', 'missions', 'market', 'contacts', 'travel'];
+    $requestedTravelView = is_string($_GET['view'] ?? null) ? $_GET['view'] : '';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        http_response_code(403);
+        exit('Podczas podróży nie możesz wykonywać akcji. Możesz przeglądać profil, Wanted, misje, rynek i kontakty.');
+    }
+    if ($selectedLocation !== '' || !in_array($requestedTravelView, $allowedTravelViews, true)) {
+        redirect('./?page=main&view=travel');
+    }
+}
+
 $streetMessage = '';
 $streetReward = null;
 if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
@@ -560,7 +574,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     </section>
     <?php elseif ($showTravel): ?>
     <section class="card location-panel">
-      <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=profile' : './?page=main' ?>">← <?= $activeTravel ? 'Twój profil' : 'Powrót do menu' ?></a>
       <h2>Podróże</h2>
       <p class="muted">Cena i czas podróży zależą od odległości oraz Twojego respektu.</p>
       <?php if ($travelMessage): ?><p><?= e($travelMessage) ?></p><?php endif; ?>
@@ -671,6 +685,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </article>
         <?php endforeach; ?>
     </section>
+    <?php elseif ($activeTravel): ?>
+    <section class="card location-panel"><h2>Podróż w toku</h2><p>Podczas podróży możesz przeglądać tylko profil, Wanted, misje, rynek i kontakty.</p><a class="button" href="./?page=main&amp;view=travel">Sprawdź podróż</a></section>
     <?php elseif ($selectedLocation === ''): ?>
     <?php
     // Approximate positions on a schematic outline of Poland; display only (travel comes later).
