@@ -89,17 +89,17 @@ function regenerate_player_energy(PDO $db, int $userId): void
         $columnChecked = true;
     }
 
-    // Atomic update: elapsed full 120-second intervals are consumed exactly once, even on simultaneous requests.
+    // Atomic update: elapsed full 90-second intervals are consumed exactly once, even on simultaneous requests.
     $stmt = $db->prepare("UPDATE player_stats SET
         energy = LEAST(100, energy + CASE
             WHEN energy >= 100 OR energy_updated_at IS NULL THEN 0
-            ELSE GREATEST(0, TIMESTAMPDIFF(SECOND, energy_updated_at, NOW()) DIV 120)
+            ELSE GREATEST(0, TIMESTAMPDIFF(SECOND, energy_updated_at, NOW()) DIV 90)
         END),
         energy_updated_at = CASE
             WHEN energy >= 100 THEN NOW()
             WHEN energy_updated_at IS NULL THEN NOW()
             ELSE DATE_ADD(energy_updated_at, INTERVAL
-                GREATEST(0, TIMESTAMPDIFF(SECOND, energy_updated_at, NOW()) DIV 120) * 120 SECOND)
+                GREATEST(0, TIMESTAMPDIFF(SECOND, energy_updated_at, NOW()) DIV 90) * 90 SECOND)
         END
         WHERE user_id = ?");
     $stmt->execute([$userId]);
