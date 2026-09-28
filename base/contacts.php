@@ -2,6 +2,8 @@
 // Kontakty: jedna relacja na parę graczy, niezależnie od kierunku zaproszenia.
 $contactsMessage = '';
 $contactFriends = $contactIncoming = $contactOutgoing = $contactSearchResults = [];
+$privateChatFriend = null;
+$privateMessages = [];
 if ($user && $db instanceof PDO && ($_GET['view'] ?? '') === 'contacts') {
     $db->exec("CREATE TABLE IF NOT EXISTS player_contacts (
         user_low INT NOT NULL, user_high INT NOT NULL, requested_by INT NOT NULL,
@@ -11,7 +13,15 @@ if ($user && $db instanceof PDO && ($_GET['view'] ?? '') === 'contacts') {
         PRIMARY KEY(user_low,user_high), INDEX contacts_high(user_high,status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $me=(int)$user['id'];
-    if ($_SERVER['REQUEST_METHOD']==='POST' && in_array($_POST['action']??'', ['friend_send','friend_accept','friend_reject','friend_remove','friend_cancel'],true)) {
+    $db->exec("CREATE TABLE IF NOT EXISTS private_messages (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        sender_id INT NOT NULL, receiver_id INT NOT NULL,
+        body VARCHAR(500) NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX pm_conversation(sender_id,receiver_id,created_at,id),
+        INDEX pm_receiver(receiver_id,created_at,id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    if ($_SERVER['REQUEST_METHOD']==='POST' && in_array($_POST['action']??'', ['friend_send','friend_accept','friend_reject','friend_remove','friend_cancel','private_message_send'],true)) {
         if (!csrf_valid(is_string($_POST['csrf_token']??null)?$_POST['csrf_token']:null)) {
             $contactsMessage='Sesja wygasła. Odśwież stronę.';
         } else {
@@ -19,7 +29,18 @@ if ($user && $db instanceof PDO && ($_GET['view'] ?? '') === 'contacts') {
             $target=filter_var($_POST['target']??null,FILTER_VALIDATE_INT);
             if ($target && $target!==$me) {
                 $low=min($me,$target);$high=max($me,$target);
-                if ($action==='friend_send') {
+                if ($action==='private_message_send') {
+                    $friendCheck=$db->prepare("SELECT 1 FROM player_contacts WHERE user_low=? AND user_high=? AND status='accepted' LIMIT 1");
+                    $friendCheck->execute([$low,$high]);
+                    $body=trim(is_string($_POST['body']??null)?$_POST['body']:'');
+                    if (!$friendCheck->fetchColumn()) $contactsMessage='Wiadomości prywatne możesz wysyłać tylko do znajomych.';
+                    elseif ($body==='' || mb_strlen($body)>500) $contactsMessage='Wiadomość musi mieć od 1 do 500 znaków.';
+                    else {
+                        $pm=$db->prepare('INSERT INTO private_messages(sender_id,receiver_id,body) VALUES (?,?,?)');
+                        $pm->execute([$me,$target,$body]);
+                        $contactsMessage='Wiadomość wysłana.';
+                    }
+                } elseif ($action==='friend_send') {
                     $check=$db->prepare('SELECT id FROM users WHERE id=? AND active=1');
                     $check->execute([$target]);
                     if ($check->fetchColumn()) {
@@ -53,6 +74,21 @@ if ($user && $db instanceof PDO && ($_GET['view'] ?? '') === 'contacts') {
         if($item['status']==='accepted')$contactFriends[]=$item;
         elseif((int)$item['requested_by']===$me)$contactOutgoing[]=$item;
         else $contactIncoming[]=$item;
+    }
+    $chatId=filter_var($_GET['chat']??null,FILTER_VALIDATE_INT);
+    if ($chatId && $chatId!==$me) {
+        $low=min($me,$chatId); $high=max($me,$chatId);
+        $friend=$db->prepare("SELECT u.id,u.login FROM player_contacts c JOIN users u ON u.id=? AND u.active=1 WHERE c.user_low=? AND c.user_high=? AND c.status='accepted' LIMIT 1");
+        $friend->execute([$chatId,$low,$high]);
+        $privateChatFriend=$friend->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($privateChatFriend) {
+            $messages=$db->prepare("SELECT m.id,m.sender_id,m.receiver_id,m.body,m.created_at,u.login AS sender_login
+              FROM private_messages m JOIN users u ON u.id=m.sender_id
+              WHERE (m.sender_id=? AND m.receiver_id=?) OR (m.sender_id=? AND m.receiver_id=?)
+              ORDER BY m.created_at DESC,m.id DESC LIMIT 50");
+            $messages->execute([$me,$chatId,$chatId,$me]);
+            $privateMessages=array_reverse($messages->fetchAll(PDO::FETCH_ASSOC));
+        }
     }
     $search=trim(is_string($_GET['friend_search']??null)?$_GET['friend_search']:'');
     if($search!==''){
