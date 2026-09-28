@@ -416,6 +416,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             .game-nav.open { display: flex; }
             .game-nav a { width: 100%; }
         }
+        .location-grid.traveling {opacity:.45;pointer-events:none;filter:grayscale(1);}
         .travel-status {margin-bottom:16px;border-color:#b28c37;background:#292316;}
         .travel-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
         @media(max-width:600px){.travel-grid{grid-template-columns:1fr}}
@@ -757,7 +758,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       document.addEventListener('visibilitychange', refresh);
     })();
     </script>
-    <section class="location-grid" aria-label="Lokacje gry">
+    <section class="location-grid<?= $activeTravel ? ' traveling' : '' ?>" aria-label="Lokacje gry">
         <a class="location-button <?= isset($lockedLocations['ulica']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['ulica']) ? '#' : './?page=main&amp;location=ulica' ?>"><?= isset($lockedLocations['ulica']) ? '🔒 ' : '' ?>Ulica</a>
         <a class="location-button <?= isset($lockedLocations['napad']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['napad']) ? '#' : './?page=main&amp;location=napad' ?>"><?= isset($lockedLocations['napad']) ? '🔒 ' : '' ?>Napad</a>
         <a class="location-button <?= isset($lockedLocations['gang']) ? 'locked' : '' ?>" href="<?= isset($lockedLocations['gang']) ? '#' : './?page=main&amp;location=gang' ?>"><?= isset($lockedLocations['gang']) ? '🔒 ' : '' ?>Gang</a>
