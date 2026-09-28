@@ -23,7 +23,7 @@ try {
     if (!$stats) throw new RuntimeException('Player stats missing');
     if ((int) $stats['energy'] < 100 && !empty($stats['energy_updated_at'])) {
         $elapsed = (int) $stats['energy_elapsed_seconds'];
-        $stats['energy'] = min(100, (int) $stats['energy'] + intdiv($elapsed, 120));
+        $stats['energy'] = min(100, (int) $stats['energy'] + intdiv($elapsed, 90));
     }
     $rank = get_player_rank($db, $userId);
     $fields = ['cash','credits','respect','public_respect','energy','tickets','strength','endurance','intelligence','charisma','cunning','profession','current_city'];
