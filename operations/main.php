@@ -41,6 +41,7 @@ $stats = null;
 $gameState = null;
 $playerRank = null;
 $respectHistory = [];
+$profileTab = in_array($_GET['tab'] ?? '', ['guestbook','respect'], true) ? $_GET['tab'] : 'overview';
 if ($user && $db instanceof PDO) {
     $gameState = update_game_clock($db);
     $stats = get_player_stats($db, (int) $user['id']);
@@ -96,7 +97,6 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
     }
 }
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
-$profileTab = in_array($_GET['tab'] ?? '', ['guestbook','respect'], true) ? $_GET['tab'] : 'overview';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $showWanted = isset($_GET['view']) && $_GET['view'] === 'wanted';
 $wantedLeader = null;
