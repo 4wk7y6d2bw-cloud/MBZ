@@ -31,7 +31,7 @@ function travel_quote(array $cities,string $from,string $to,int $respect): ?arra
  $distanceFee=max((int)ceil($km/65)*3,(int)ceil(max(0,$respect)*$km/10000));
  return ['km'=>$km,'extra'=>$extra,'rate'=>5+$extra,
    'price'=>max(1,(int)ceil(max(0,$respect)*0.05)+$distanceFee),
-   'seconds'=>(int)round(min(1200,300+(int)round($km*1.5))*0.7)];
+   'seconds'=>(int)round(min(1200,300+(int)round($km*1.5))*0.7*0.8)];
 }
 $db->exec('CREATE TABLE IF NOT EXISTS player_travel (
  user_id INT NOT NULL PRIMARY KEY,
