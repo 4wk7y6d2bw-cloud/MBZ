@@ -8,6 +8,7 @@ ob_start();
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/base/auth.php';
+require_once __DIR__ . '/base/profession_rules.php';
 
 csrf_token();
 
