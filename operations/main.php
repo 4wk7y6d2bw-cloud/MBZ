@@ -562,7 +562,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card location-panel">
       <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
       <h2>Podróże</h2>
-      <p class="muted">Cena: 5% aktualnego respektu oraz dopłata za odległość. Podróż trwa 5–10 minut.</p>
+      <p class="muted">Cena i czas podróży zależą od odległości oraz Twojego respektu.</p>
       <?php if ($travelMessage): ?><p><?= e($travelMessage) ?></p><?php endif; ?>
       <?php if ($activeTravel): ?>
         <h3>Podróż do <?= e($activeTravel['destination']) ?></h3>
@@ -580,7 +580,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         ?>
           <form class="mission" method="post" action="./?page=main&amp;view=travel">
             <h3><?= e($destination) ?></h3>
-            <p class="muted"><?= $quote['km'] ?> km · <?= $quote['minutes'] ?> min · <?= $quote['rate'] ?>% respektu</p>
+            <p class="muted"><?= $quote['km'] ?> km · <?= (int)floor($quote['seconds']/60) ?> min <?= str_pad((string)($quote['seconds']%60),2,'0',STR_PAD_LEFT) ?> s</p>
             <strong><?= number_format($quote['price'],0,'.',' ') ?> $</strong>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="start_travel">
