@@ -79,6 +79,7 @@ if ($activeTravel) {
     }
 }
 
+require_once __DIR__ . '/../base/robbery_rewards.php';
 $streetMessage = '';
 $streetReward = null;
 if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
@@ -102,7 +103,9 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                     strength=strength+1,endurance=endurance+1,intelligence=intelligence+1,
                     charisma=charisma+1,cunning=cunning+1 WHERE user_id=? AND energy>=5');
                 $rob->execute([$streetReward,(int)$user['id']]);
-                $streetMessage = 'Rabunek udany! +'.$streetReward.' $ i +1 do każdej statystyki. -5% energii.';
+                $firstDailyRobbery = award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day']);
+                $streetMessage = 'Rabunek udany! +'.$streetReward.' $ i +1 do każdej statystyki. -5% energii.'
+                    . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 kredyt!' : '');
             }
             $db->commit();
             $stats = get_player_stats($db,(int)$user['id']);
