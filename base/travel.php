@@ -18,6 +18,9 @@ $db->exec('CREATE TABLE IF NOT EXISTS player_unlocked_cities (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 $seedCity=$db->prepare('INSERT IGNORE INTO player_unlocked_cities(user_id,city) VALUES (?,?)');
 $seedCity->execute([(int)$user['id'],(string)$stats['current_city']]);
+// Test: Warszawa i Lublin dostępne dla wszystkich graczy.
+$seedCity->execute([(int)$user['id'],'Warszawa']);
+$seedCity->execute([(int)$user['id'],'Lublin']);
 $cityAccessQuery=$db->prepare('SELECT city FROM player_unlocked_cities WHERE user_id=?');
 $cityAccessQuery->execute([(int)$user['id']]);
 $unlockedCities=array_fill_keys($cityAccessQuery->fetchAll(PDO::FETCH_COLUMN),true);
