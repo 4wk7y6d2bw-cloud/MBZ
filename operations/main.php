@@ -73,7 +73,9 @@ $streetMessage = '';
 $streetReward = null;
 if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
     && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'street_grocery_robbery') {
-    if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+    if ($activeTravel) {
+        $streetMessage = 'Nie możesz rabować podczas podróży.';
+    } elseif (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
         $streetMessage = 'Sesja wygasła. Odśwież stronę.';
     } else {
         $db->beginTransaction();
