@@ -908,7 +908,6 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card location-panel">
       <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
       <h2>WANTED — dzień <?= (int)$gameState['game_day'] ?></h2>
-      <p class="muted">Cel: gracz z największym przyrostem respektu w ostatnim zakończonym dniu gry. Cel nie zmienia się w trakcie dnia.</p>
       <?php if ($wantedMessage !== ''): ?><p class="stat"><?= e($wantedMessage) ?></p><?php endif; ?>
       <?php if ($wantedKilled && $wantedLeader): ?>
         <div class="stat"><strong>POSZUKIWANY ZABITY</strong><span><?= e($wantedLeader['login']) ?></span><span>Nagroda odebrana — dzisiaj nie ma kolejnego celu.</span></div>
@@ -933,11 +932,10 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           </form>
         <?php endif; ?>
       <?php else: ?>
-        <p class="muted">Brak gracza z dodatnim przyrostem respektu w ostatnim zakończonym dniu.</p>
+        <p class="muted">Brak gracza.</p>
       <?php endif; ?>
 
       <h3 style="margin-top:28px">Najgroźniejszy morderca dnia</h3>
-      <p class="muted">Drugi cel: gracz, który miał najwięcej zabójstw w ostatnim zakończonym dniu gry. Nagroda rośnie o 1 000 $ za każde jego zabójstwo.</p>
       <?php if ($killerMessage!==''): ?><p class="stat"><?= e($killerMessage) ?></p><?php endif; ?>
       <?php if ($killerKilled && $killerLeader): ?>
         <div class="stat"><strong>CEL ZABITY</strong><span><?= e($killerLeader['login']) ?></span><span>Nagroda została odebrana.</span></div>
@@ -952,7 +950,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php elseif ($activeTravel): ?><p class="muted">Atak niedostępny podczas podróży.</p>
         <?php else: ?><form method="post" action="./?page=main&amp;view=wanted"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="wanted_killer_kill"><input type="hidden" name="target_id" value="<?= (int)$killerLeader['id'] ?>"><button type="submit">Zabij mordercę i odbierz nagrodę</button></form><?php endif; ?>
       <?php else: ?>
-        <p class="muted">Brak zabójstw graczy w ostatnim zakończonym dniu.</p>
+        <p class="muted">Brak gracza.</p>
       <?php endif; ?>
     </section>
     <?php elseif ($showMissions): ?>
