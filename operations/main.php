@@ -70,16 +70,12 @@ $activeTravel = null;
 $travelMessage = '';
 if ($user && $db instanceof PDO) require __DIR__ . '/../base/travel.php';
 if ($activeTravel) {
-    // Podróż: tylko odczyt dozwolonych zakładek. Blokada po stronie serwera,
-    // więc bezpośrednie adresy URL i formularze również nie omijają ograniczeń.
-    $allowedTravelViews = ['profile', 'wanted', 'missions', 'market', 'contacts', 'travel'];
-    $requestedTravelView = is_string($_GET['view'] ?? null) ? $_GET['view'] : '';
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        http_response_code(403);
-        exit('Podczas podróży nie możesz wykonywać akcji. Możesz przeglądać profil, Wanted, misje, rynek i kontakty.');
+    // Cała gra pozostaje widoczna. Akcje i lokacje są zablokowane po stronie serwera.
+    if ($selectedLocation !== '') {
+        redirect('./?page=main');
     }
-    if ($selectedLocation !== '' || !in_array($requestedTravelView, $allowedTravelViews, true)) {
-        redirect('./?page=main&view=travel');
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        redirect('./?page=main');
     }
 }
 
@@ -420,6 +416,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             .game-nav.open { display: flex; }
             .game-nav a { width: 100%; }
         }
+        .travel-status {margin-bottom:16px;border-color:#b28c37;background:#292316;}
         .travel-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
         @media(max-width:600px){.travel-grid{grid-template-columns:1fr}}
         .profile-tabs { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0; }
@@ -454,6 +451,17 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&amp;view=travel">Podróż</a>
         <a href="./?page=main&amp;view=market">Rynek</a>
     </nav>
+
+    <?php if ($activeTravel): ?>
+    <section class="card travel-status" aria-live="polite">
+      <strong>🚗 Podróż do <?= e($activeTravel['destination']) ?></strong>
+      <span> · Pozostało: <strong class="travel-live-countdown" data-seconds="<?= max(0,strtotime($activeTravel['arrives_at'])-time()) ?>">--:--</strong></span>
+      <span class="muted"> · Lokacje i akcje niedostępne do przyjazdu.</span>
+    </section>
+    <script>
+    (()=>{const el=document.querySelector('.travel-live-countdown');if(!el)return;let s=Number(el.dataset.seconds);const tick=()=>{if(s<=0){el.textContent='00:00';location.reload();return;}el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');s--;};tick();setInterval(tick,1000);})();
+    </script>
+    <?php endif; ?>
 
     <?php if ($gameState): ?>
     <section class="game-state" aria-label="Stan gry">
@@ -695,8 +703,6 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </article>
         <?php endforeach; ?>
     </section>
-    <?php elseif ($activeTravel): ?>
-    <section class="card location-panel"><h2>Podróż w toku</h2><p>Podczas podróży możesz przeglądać tylko profil, Wanted, misje, rynek i kontakty.</p><a class="button" href="./?page=main&amp;view=travel">Sprawdź podróż</a></section>
     <?php elseif ($selectedLocation === ''): ?>
     <?php
     // Approximate positions on a schematic outline of Poland; display only (travel comes later).
