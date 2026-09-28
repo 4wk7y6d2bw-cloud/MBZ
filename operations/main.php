@@ -65,6 +65,10 @@ $locationNames = [
 $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
     ? $_GET['location'] : '';
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
+$showTravel = ($_GET['view'] ?? '') === 'travel';
+$activeTravel = null;
+$travelMessage = '';
+if ($user && $db instanceof PDO) require __DIR__ . '/../base/travel.php';
 $streetMessage = '';
 $streetReward = null;
 if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
@@ -398,6 +402,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             .game-nav.open { display: flex; }
             .game-nav a { width: 100%; }
         }
+        .travel-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+        @media(max-width:600px){.travel-grid{grid-template-columns:1fr}}
         .profile-tabs { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0; }
         .profile-tabs a { padding:12px 16px; border:1px solid #444; border-radius:9px; color:#ddd; text-decoration:none; background:#111; font-weight:700; }
         .profile-tabs a.active { color:#111; background:#52dc8b; border-color:#52dc8b; }
@@ -427,7 +433,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&view=missions">Misje</a>
         <a href="#">Kontakty</a>
         <a href="./?page=main&amp;view=wanted">Wanted</a>
-        <a href="#">Podróż</a>
+        <a href="./?page=main&amp;view=travel">Podróż</a>
         <a href="#">Rynek</a>
     </nav>
 
@@ -547,6 +553,39 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <?php endif; ?>
         </div>
         <?php endif; ?>
+    </section>
+    <?php elseif ($showTravel): ?>
+    <section class="card location-panel">
+      <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+      <h2>Podróże</h2>
+      <p class="muted">Cena: 5% aktualnego respektu oraz dopłata za odległość. Podróż trwa 5–10 minut.</p>
+      <?php if ($travelMessage): ?><p><?= e($travelMessage) ?></p><?php endif; ?>
+      <?php if ($activeTravel): ?>
+        <h3>Podróż do <?= e($activeTravel['destination']) ?></h3>
+        <p>Przyjazd: <?= e($activeTravel['arrives_at']) ?></p>
+        <p id="travelCountdown" data-seconds="<?= max(0,strtotime($activeTravel['arrives_at'])-time()) ?>"></p>
+        <script>
+        (()=>{const el=document.getElementById('travelCountdown');let left=Number(el.dataset.seconds);const tick=()=>{el.textContent=left>0?'Pozostało: '+Math.floor(left/60)+' min '+String(left%60).padStart(2,'0')+' s':'Podróż zakończona — odśwież stronę';left=Math.max(0,left-1);};tick();setInterval(tick,1000);})();
+        </script>
+      <?php else: ?>
+        <p>Jesteś w: <strong><?= e($stats['current_city']) ?></strong></p>
+        <div class="travel-grid">
+        <?php foreach ($travelCities as $destination=>$coords):
+          $quote=travel_quote($travelCities,(string)$stats['current_city'],$destination,(int)$stats['respect']);
+          if (!$quote) continue;
+        ?>
+          <form class="mission" method="post" action="./?page=main&amp;view=travel">
+            <h3><?= e($destination) ?></h3>
+            <p class="muted"><?= $quote['km'] ?> km · <?= $quote['minutes'] ?> min · <?= $quote['rate'] ?>% respektu</p>
+            <strong><?= number_format($quote['price'],0,'.',' ') ?> $</strong>
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="start_travel">
+            <input type="hidden" name="destination" value="<?= e($destination) ?>">
+            <button type="submit" <?= (int)$stats['cash']<$quote['price'] || (int)($gameState['is_break']??0)===1 ? 'disabled' : '' ?>>Podróżuj</button>
+          </form>
+        <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
     </section>
     <?php elseif ($showWanted): ?>
     <section class="card location-panel">
