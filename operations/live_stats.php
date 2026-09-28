@@ -28,9 +28,9 @@ try {
     // Derive live respect from current cash and attributes, matching get_player_stats().
     $statBonus = 0;
     foreach (['strength','endurance','intelligence','charisma','cunning'] as $attribute) {
-        $statBonus += max(0, (int) $stats[$attribute] - 10);
+        $statBonus += max(0, (int) $stats[$attribute]);
     }
-    $stats['respect'] = max(100, 100 + intdiv(max(0, (int) $stats['cash'] - 500), 10) + intdiv($statBonus, 20));
+    $stats['respect'] = intdiv(max(0, (int) $stats['cash']), 10) + intdiv($statBonus, 20);
     $rank = get_player_rank($db, $userId);
     $fields = ['cash','credits','respect','public_respect','energy','tickets','strength','endurance','intelligence','charisma','cunning','profession','current_city'];
     $player = [];
