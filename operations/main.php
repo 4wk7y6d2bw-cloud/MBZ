@@ -449,10 +449,10 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <nav class="game-nav" id="gameNav">
         <a href="./?page=main&view=profile">Twój profil</a>
         <a href="./?page=main&view=missions">Misje</a>
-        <a href="#">Kontakty</a>
+        <a href="./?page=main&amp;view=contacts">Kontakty</a>
         <a href="./?page=main&amp;view=wanted">Wanted</a>
         <a href="./?page=main&amp;view=travel">Podróż</a>
-        <a href="#">Rynek</a>
+        <a href="./?page=main&amp;view=market">Rynek</a>
     </nav>
 
     <?php if ($gameState): ?>
@@ -465,7 +465,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
 
     <?php if ($showProfile): ?>
     <section class="card location-panel">
-        <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+        <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← <?= $activeTravel ? 'Podróże' : 'Powrót do menu' ?></a>
         <h2><?= $guestbookOwner ? 'Profil: '.e($guestbookOwner['login']) : 'Profil gracza' ?></h2>
         <?php $profileId = (int)($guestbookOwner['id'] ?? $user['id']); ?>
         <nav class="profile-tabs" aria-label="Zakładki profilu">
@@ -604,6 +604,12 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php endforeach; ?>
         </div>
       <?php endif; ?>
+    </section>
+    <?php elseif (($_GET['view'] ?? '') === 'contacts' || ($_GET['view'] ?? '') === 'market'): ?>
+    <section class="card location-panel">
+      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← <?= $activeTravel ? 'Podróże' : 'Powrót do menu' ?></a>
+      <h2><?= ($_GET['view'] ?? '') === 'contacts' ? 'Kontakty' : 'Rynek' ?></h2>
+      <p class="muted">Ta zakładka jest w przygotowaniu.</p>
     </section>
     <?php elseif ($showWanted): ?>
     <section class="card location-panel">
