@@ -19,6 +19,7 @@ $allowedPages = [
     'live_stats',
     'profession',
     'admin',
+    'admin_cash_500',
     'raids',
     'logout',
     'error404',
