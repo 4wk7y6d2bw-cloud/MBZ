@@ -65,6 +65,23 @@ $locationNames = [
 $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
     ? $_GET['location'] : '';
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
+$showRanking = ($_GET['view'] ?? '') === 'ranking';
+$rankingPage = max(1, min(100000, (int)($_GET['p'] ?? 1)));
+$rankingPlayers = [];
+$rankingTotal = 0;
+$rankingPages = 1;
+if ($showRanking && $user && $db instanceof PDO) {
+    $rankingTotal = (int)$db->query('SELECT COUNT(*) FROM player_stats p JOIN users u ON u.id=p.user_id WHERE u.active=1')->fetchColumn();
+    $rankingPages = max(1,(int)ceil($rankingTotal/20));
+    $rankingPage = min($rankingPage,$rankingPages);
+    $rankingOffset = ($rankingPage-1)*20;
+    $rankingQuery = $db->prepare('SELECT u.id,u.login,p.public_respect,p.current_city,p.profession
+      FROM player_stats p JOIN users u ON u.id=p.user_id
+      WHERE u.active=1 ORDER BY p.public_respect DESC,p.user_id ASC LIMIT 20 OFFSET :offset');
+    $rankingQuery->bindValue(':offset',$rankingOffset,PDO::PARAM_INT);
+    $rankingQuery->execute();
+    $rankingPlayers = $rankingQuery->fetchAll();
+}
 $showTravel = ($_GET['view'] ?? '') === 'travel';
 $activeTravel = null;
 $travelMessage = '';
@@ -475,6 +492,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&amp;view=wanted">Wanted</a>
         <a href="./?page=main&amp;view=travel">Podróż</a>
         <a href="./?page=main&amp;view=market">Rynek</a>
+        <a href="./?page=main&amp;view=ranking">Ranking</a>
     </nav>
 
     <?php if ($activeTravel): ?>
@@ -670,6 +688,35 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         })();
         </script>
 
+      <?php endif; ?>
+    </section>
+    <?php elseif ($showRanking): ?>
+    <section class="card location-panel">
+      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
+      <h2>🏆 Ranking graczy</h2>
+      <p class="muted">Wszyscy aktywni gracze · <?= $rankingTotal ?> graczy · 20 na stronę. Ranking według publicznego respektu.</p>
+      <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;text-align:left">
+        <thead><tr><th style="padding:12px">Miejsce</th><th style="padding:12px">Gracz</th><th style="padding:12px">Respekt</th><th style="padding:12px">Miasto</th></tr></thead>
+        <tbody>
+        <?php foreach ($rankingPlayers as $index=>$ranked): ?>
+          <tr style="border-top:1px solid #363636;<?= (int)$ranked['id']===(int)$user['id']?'background:#263b2b;':'' ?>">
+            <td style="padding:12px">#<?= ($rankingPage-1)*20+$index+1 ?></td>
+            <td style="padding:12px;font-weight:700"><?= e($ranked['login']) ?><?= (int)$ranked['id']===(int)$user['id']?' (Ty)':'' ?></td>
+            <td style="padding:12px"><?= number_format((int)$ranked['public_respect'],0,'.',' ') ?></td>
+            <td style="padding:12px"><?= e((string)($ranked['current_city']??'—')) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (!$rankingPlayers): ?><tr><td colspan="4" style="padding:15px">Brak graczy.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+      </div>
+      <?php if ($rankingPages>1): ?>
+      <nav aria-label="Strony rankingu" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px">
+        <?php if ($rankingPage>1): ?><a class="button secondary" href="./?page=main&amp;view=ranking&amp;p=<?= $rankingPage-1 ?>">← Poprzednia</a><?php endif; ?>
+        <span>Strona <?= $rankingPage ?> z <?= $rankingPages ?></span>
+        <?php if ($rankingPage<$rankingPages): ?><a class="button secondary" href="./?page=main&amp;view=ranking&amp;p=<?= $rankingPage+1 ?>">Następna →</a><?php endif; ?>
+      </nav>
       <?php endif; ?>
     </section>
     <?php elseif (($_GET['view'] ?? '') === 'contacts' || ($_GET['view'] ?? '') === 'market'): ?>
