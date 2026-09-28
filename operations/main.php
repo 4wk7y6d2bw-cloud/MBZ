@@ -126,8 +126,16 @@ if ($user && $db instanceof PDO) {
 require_once __DIR__ . '/../base/robbery_rewards.php';
 $streetMessage = '';
 $streetReward = null;
+$robberyPower = $stats ? (int) floor(
+    (int)$stats['strength'] * 0.35 +
+    (int)$stats['endurance'] * 0.20 +
+    (int)$stats['intelligence'] * 0.15 +
+    (int)$stats['charisma'] * 0.10 +
+    (int)$stats['cunning'] * 0.20
+) : 0;
+$streetAction = is_string($_POST['action'] ?? null) ? $_POST['action'] : '';
 if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
-    && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'street_grocery_robbery') {
+    && $_SERVER['REQUEST_METHOD'] === 'POST' && in_array($streetAction, ['street_grocery_robbery','street_taxi_robbery'], true)) {
     if ($activeTravel) {
         $streetMessage = 'Nie możesz rabować podczas podróży.';
     } elseif (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -139,16 +147,19 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
             $lock = $db->prepare('SELECT energy FROM player_stats WHERE user_id=? FOR UPDATE');
             $lock->execute([(int)$user['id']]);
             $currentEnergy = $lock->fetchColumn();
-            if ($currentEnergy === false || (int)$currentEnergy < 5) {
-                $streetMessage = 'Potrzebujesz co najmniej 5% energii.';
+            $energyCost = $streetAction === 'street_taxi_robbery' ? 10 : 5;
+            if ($currentEnergy === false || (int)$currentEnergy < $energyCost) {
+                $streetMessage = 'Potrzebujesz co najmniej '.$energyCost.'% energii.';
+            } elseif ($streetAction === 'street_taxi_robbery' && ($robberyPower < 25 || $robberyPower > 30)) {
+                $streetMessage = 'Napad na taksówkę wymaga mocy rabunku 25–30. Twoja moc: '.$robberyPower.'.';
             } else {
-                $streetReward = random_int(10,20);
-                $rob = $db->prepare('UPDATE player_stats SET energy=energy-5,cash=cash+?,
+                $streetReward = $streetAction === 'street_taxi_robbery' ? random_int(30,60) : random_int(10,20);
+                $rob = $db->prepare('UPDATE player_stats SET energy=energy-?,cash=cash+?,
                     strength=strength+1,endurance=endurance+1,intelligence=intelligence+1,
-                    charisma=charisma+1,cunning=cunning+1 WHERE user_id=? AND energy>=5');
-                $rob->execute([$streetReward,(int)$user['id']]);
+                    charisma=charisma+1,cunning=cunning+1 WHERE user_id=? AND energy>=?');
+                $rob->execute([$energyCost,$streetReward,(int)$user['id'],$energyCost]);
                 $firstDailyRobbery = award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day']);
-                $streetMessage = 'Rabunek udany! +'.$streetReward.' $ i +1 do każdej statystyki. -5% energii.'
+                $streetMessage = 'Rabunek udany! +'.$streetReward.' $ i +1 do każdej statystyki. -'.$energyCost.'% energii.'
                     . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
             }
             $db->commit();
@@ -1120,6 +1131,14 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="street_grocery_robbery">
             <button type="submit" <?= !$stats || (int)$stats['energy'] < 5 ? 'disabled' : '' ?>>Napadnij na spożywczak</button>
+          </form>
+          <h3>Napad na taksówkę</h3>
+          <p class="muted">Koszt: 10% energii · Wymagana moc rabunku: 25–30 · Nagroda: 30–60 $ i +1 do każdej statystyki.</p>
+          <p class="muted">Twoja moc rabunku: <strong><?= $robberyPower ?></strong></p>
+          <form method="post" action="./?page=main&amp;location=ulica">
+            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+            <input type="hidden" name="action" value="street_taxi_robbery">
+            <button type="submit" <?= !$stats || (int)$stats['energy'] < 10 || $robberyPower < 25 || $robberyPower > 30 ? 'disabled' : '' ?>>Napadnij na taksówkę</button>
           </form>
         <?php else: ?>
           <p class="muted">Tutaj pojawią się informacje i dostępne akcje tej lokacji.</p>
