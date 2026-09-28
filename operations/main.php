@@ -45,7 +45,7 @@ if ($user && $db instanceof PDO) {
     $gameState = update_game_clock($db);
     $stats = get_player_stats($db, (int) $user['id']);
     $playerRank = get_player_rank($db, (int) $user['id']);
-    if (isset($_GET['view']) && $_GET['view'] === 'profile' && $gameState) {
+    if (isset($_GET['view']) && $_GET['view'] === 'profile' && $gameState && $profileTab === 'respect') {
         $respectHistory = get_respect_history($db, (int) $user['id'], (int) $gameState['season']);
     }
     if ($stats && ($stats['profession'] === null || $stats['current_city'] === null)) {
@@ -96,6 +96,7 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
     }
 }
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
+$profileTab = in_array($_GET['tab'] ?? '', ['guestbook','respect'], true) ? $_GET['tab'] : 'overview';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $showWanted = isset($_GET['view']) && $_GET['view'] === 'wanted';
 $wantedLeader = null;
@@ -228,7 +229,7 @@ if ($user && $db instanceof PDO && $showProfile) {
                     } else {
                         $insert = $db->prepare('INSERT INTO guestbook_entries (owner_id,author_id,body) VALUES (?,?,?)');
                         $insert->execute([(int)$guestbookOwner['id'],(int)$user['id'],$body]);
-                        redirect('./?page=main&view=profile&player='.(int)$guestbookOwner['id'].'#guestbook');
+                        redirect('./?page=main&view=profile&player='.(int)$guestbookOwner['id'].'&tab=guestbook#guestbook');
                     }
                 }
             } elseif ((int)$guestbookOwner['id'] === (int)$user['id']) {
@@ -397,6 +398,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             .game-nav.open { display: flex; }
             .game-nav a { width: 100%; }
         }
+        .profile-tabs { display:flex; flex-wrap:wrap; gap:10px; margin:22px 0; }
+        .profile-tabs a { padding:12px 16px; border:1px solid #444; border-radius:9px; color:#ddd; text-decoration:none; background:#111; font-weight:700; }
+        .profile-tabs a.active { color:#111; background:#52dc8b; border-color:#52dc8b; }
     </style>
 </head>
 <body>
@@ -439,7 +443,15 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <section class="card location-panel">
         <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
         <h2><?= $guestbookOwner ? 'Profil: '.e($guestbookOwner['login']) : 'Profil gracza' ?></h2>
-        <?php if ($guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id'] && $stats): ?>
+        <?php $profileId = (int)($guestbookOwner['id'] ?? $user['id']); ?>
+        <nav class="profile-tabs" aria-label="Zakładki profilu">
+          <a class="<?= $profileTab === 'overview' ? 'active' : '' ?>" href="./?page=main&amp;view=profile&amp;player=<?= $profileId ?>">Profil</a>
+          <a class="<?= $profileTab === 'guestbook' ? 'active' : '' ?>" href="./?page=main&amp;view=profile&amp;player=<?= $profileId ?>&amp;tab=guestbook#guestbook">Księga gości</a>
+          <?php if ($guestbookOwner && $profileId === (int)$user['id']): ?>
+          <a class="<?= $profileTab === 'respect' ? 'active' : '' ?>" href="./?page=main&amp;view=profile&amp;player=<?= $profileId ?>&amp;tab=respect">Respekt dni</a>
+          <?php endif; ?>
+        </nav>
+        <?php if ($profileTab === 'overview' && $guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id'] && $stats): ?>
         <div class="stats">
             <div class="stat"><span>Login</span><strong><?= e($user['login'] ?? '') ?></strong></div>
             <div class="stat"><span>Miejsce w rankingu</span><strong>#<?= (int) ($playerRank ?? 0) ?></strong></div>
@@ -457,7 +469,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
         </div>
         <?php endif; ?>
-        <?php if ($guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id']): ?>
+        <?php if ($profileTab === 'respect' && $guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id']): ?>
         <h2 style="margin-top:28px">Historia respektu — sezon <?= (int) ($gameState['season'] ?? 1) ?></h2>
         <p class="muted">Wynik zapisywany na koniec każdego dnia gry (co 4 godziny).</p>
         <?php if ($respectHistory): ?>
@@ -497,12 +509,12 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <p class="muted">Pierwszy zapis pojawi się po zakończeniu bieżącego dnia gry.</p>
         <?php endif; ?>
         <?php endif; ?>
-        <?php if ($guestbookOwner): ?>
+        <?php if ($profileTab === 'guestbook' && $guestbookOwner): ?>
         <div id="guestbook" style="margin-top:32px">
           <h2>Księga gości</h2>
           <?php if ($guestbookMessage !== ''): ?><p><?= e($guestbookMessage) ?></p><?php endif; ?>
           <?php if ((int)$guestbookOwner['id'] !== (int)$user['id']): ?>
-          <form method="post" action="./?page=main&amp;view=profile&amp;player=<?= (int)$guestbookOwner['id'] ?>#guestbook">
+          <form method="post" action="./?page=main&amp;view=profile&amp;player=<?= (int)$guestbookOwner['id'] ?>&amp;tab=guestbook#guestbook">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="guestbook_add">
             <label for="guestbook-body">Dodaj wpis (maksymalnie 300 znaków)</label>
@@ -512,11 +524,11 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <?php endif; ?>
           <?php foreach ($guestbookEntries as $entry): ?>
             <div class="mission">
-              <strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$entry['author_id'] ?>#guestbook"><?= e($entry['login']) ?></a></strong>
+              <strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$entry['author_id'] ?>&amp;tab=guestbook#guestbook"><?= e($entry['login']) ?></a></strong>
               <span class="muted"><?= e($entry['created_at']) ?></span>
               <p style="white-space:pre-wrap;overflow-wrap:anywhere"><?= e($entry['body']) ?></p>
               <?php if ((int)$guestbookOwner['id'] === (int)$user['id']): ?>
-              <form method="post" action="./?page=main&amp;view=profile#guestbook">
+              <form method="post" action="./?page=main&amp;view=profile&amp;tab=guestbook#guestbook">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
                 <input type="hidden" name="action" value="guestbook_delete">
                 <input type="hidden" name="entry_id" value="<?= (int)$entry['id'] ?>">
@@ -529,7 +541,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <?php if ($guestbookPages > 1): ?>
             <nav aria-label="Strony księgi gości" style="margin-top:16px">
               <?php for ($pageNo=1;$pageNo<=$guestbookPages;$pageNo++): ?>
-                <a class="button <?= $pageNo===$guestbookPage ? '' : 'secondary' ?>" href="./?page=main&amp;view=profile&amp;player=<?= (int)$guestbookOwner['id'] ?>&amp;gb_page=<?= $pageNo ?>#guestbook"><?= $pageNo ?></a>
+                <a class="button <?= $pageNo===$guestbookPage ? '' : 'secondary' ?>" href="./?page=main&amp;view=profile&amp;player=<?= (int)$guestbookOwner['id'] ?>&amp;gb_page=<?= $pageNo ?>&amp;tab=guestbook#guestbook"><?= $pageNo ?></a>
               <?php endfor; ?>
             </nav>
           <?php endif; ?>
