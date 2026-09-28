@@ -262,7 +262,7 @@ if ($user && $db instanceof PDO && $showProfile) {
     $ownerStmt = $db->prepare('SELECT id, login FROM users WHERE id=? AND active=1');
     $ownerStmt->execute([$ownerId]);
     $guestbookOwner = $ownerStmt->fetch();
-    if ($guestbookOwner && (int)$guestbookOwner['id'] !== (int)$user['id']) {
+    if ($guestbookOwner) {
         $publicStmt=$db->prepare('SELECT profession,current_city,public_respect,strength,endurance,intelligence,charisma,cunning FROM player_stats WHERE user_id=?');
         $publicStmt->execute([(int)$guestbookOwner['id']]);
         $publicProfile=$publicStmt->fetch() ?: null;
@@ -564,7 +564,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
         </div>
         <?php endif; ?>
-        <?php if ($profileTab === 'overview' && $guestbookOwner && $publicProfile): ?>
+        <?php if ($profileTab === 'overview' && $guestbookOwner && (int)$guestbookOwner['id'] !== (int)$user['id']): ?>
+        <h3>Statystyki gracza</h3>
+        <?php if ($publicProfile): ?>
         <div class="stats">
           <div class="stat"><span>Login</span><strong><?= e($guestbookOwner['login']) ?></strong></div>
           <div class="stat"><span>Miejsce w rankingu</span><strong>#<?= (int)$publicRank ?></strong></div>
@@ -575,6 +577,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <div class="stat"><span><?= $label ?></span><strong><?= (int)$publicProfile[$key] ?></strong></div>
           <?php endforeach; ?>
         </div>
+        <?php else: ?><p class="muted">Ten gracz nie ma jeszcze utworzonej postaci.</p><?php endif; ?>
         <?php endif; ?>
         <?php if ($profileTab === 'respect' && $guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id']): ?>
         <h2 style="margin-top:28px">Historia respektu — sezon <?= (int) ($gameState['season'] ?? 1) ?></h2>
