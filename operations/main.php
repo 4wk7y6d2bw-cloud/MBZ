@@ -721,7 +721,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php foreach ($rankingPlayers as $index=>$ranked): ?>
           <tr style="border-top:1px solid #363636;<?= (int)$ranked['id']===(int)$user['id']?'background:#263b2b;':'' ?>">
             <td style="padding:12px">#<?= (int)$ranked['global_rank'] ?></td>
-            <td style="padding:12px;font-weight:700"><?= e($ranked['login']) ?><?= (int)$ranked['id']===(int)$user['id']?' (Ty)':'' ?></td>
+            <td style="padding:12px;font-weight:700"><?= e($ranked['login']) ?></td>
             <td style="padding:12px"><?= number_format((int)$ranked['public_respect'],0,'.',' ') ?></td>
             <td style="padding:12px"><?= e((string)($ranked['profession']??'—')) ?></td>
           </tr>
