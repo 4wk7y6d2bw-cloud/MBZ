@@ -257,6 +257,11 @@ $guestbookPage = 1;
 $guestbookPages = 1;
 $guestbookMessage = '';
 if ($user && $db instanceof PDO && $showProfile) {
+    $db->exec('CREATE TABLE IF NOT EXISTS player_blocks (
+        blocker_id INT NOT NULL, blocked_id INT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(blocker_id,blocked_id), INDEX blocks_blocked(blocked_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
     $db->exec('CREATE TABLE IF NOT EXISTS guestbook_entries (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         owner_id INT NOT NULL,
@@ -292,6 +297,11 @@ if ($user && $db instanceof PDO && $showProfile) {
             } elseif ($_POST['action'] === 'guestbook_add' && (int)$guestbookOwner['id'] === (int)$user['id']) {
                 $guestbookMessage = 'Nie możesz wpisywać się do własnej księgi gości.';
             } elseif ($_POST['action'] === 'guestbook_add') {
+                $blockCheck=$db->prepare('SELECT 1 FROM player_blocks WHERE blocker_id=? AND blocked_id=? LIMIT 1');
+                $blockCheck->execute([(int)$guestbookOwner['id'],(int)$user['id']]);
+                if ($blockCheck->fetchColumn()) {
+                    $guestbookMessage='Nie możesz wpisać się do księgi gości tego gracza.';
+                } else {
                 $body = trim((string)($_POST['body'] ?? ''));
                 if ($body === '' || mb_strlen($body) > 300) {
                     $guestbookMessage = 'Komentarz musi mieć od 1 do 300 znaków.';
@@ -306,6 +316,7 @@ if ($user && $db instanceof PDO && $showProfile) {
                         $insert->execute([(int)$guestbookOwner['id'],(int)$user['id'],$body]);
                         redirect('./?page=main&view=profile&player='.(int)$guestbookOwner['id'].'&tab=guestbook#guestbook');
                     }
+                }
                 }
             } elseif ((int)$guestbookOwner['id'] === (int)$user['id']) {
                 $entryId = filter_var($_POST['entry_id'] ?? null,FILTER_VALIDATE_INT);
@@ -788,6 +799,13 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           </div>
           <?php endforeach; ?>
         </div>
+        <?php if ($privateMessagePages > 1): ?>
+        <nav style="margin:10px 0" aria-label="Strony wiadomości">
+          <?php for($mp=1;$mp<=$privateMessagePages;$mp++): ?>
+          <a class="button <?= $mp===$privateMessagePage?'':'secondary' ?>" href="./?page=main&amp;view=contacts&amp;chat=<?= (int)$privateChatFriend['id'] ?>&amp;msg_page=<?= $mp ?>"><?= $mp ?></a>
+          <?php endfor; ?>
+        </nav>
+        <?php endif; ?>
         <?php if (!$activeTravel): ?>
         <form method="post" action="./?page=main&amp;view=contacts&amp;chat=<?= (int)$privateChatFriend['id'] ?>">
           <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -824,7 +842,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <?php endforeach; ?>
       <?php endif; ?>
       <?php foreach ([
-        ['Znajomi',$contactFriends,'private_chat'=>'Napisz PW','friend_remove'=>'Usuń znajomego'],
+        ['Znajomi',$contactFriends,'private_chat'=>'Napisz PW','player_block'=>'Zablokuj','friend_remove'=>'Usuń znajomego'],
         ['Otrzymane zaproszenia',$contactIncoming,'friend_accept'=>'Akceptuj','friend_reject'=>'Odrzuć'],
         ['Wysłane zaproszenia',$contactOutgoing,'friend_cancel'=>'Anuluj']
       ] as $group):
@@ -850,6 +868,17 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php endforeach; ?></div><?php endif; ?>
       </div>
       <?php endforeach; ?>
+      <?php endforeach; ?>
+      <h3 style="margin-top:25px">Zablokowani (<?= count($blockedPlayers) ?>)</h3>
+      <?php if (!$blockedPlayers): ?><p class="muted">Brak zablokowanych graczy.</p><?php endif; ?>
+      <?php foreach($blockedPlayers as $person): ?>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0">
+        <a href="./?page=main&amp;view=profile&amp;player=<?= (int)$person['id'] ?>"><?= e($person['login']) ?></a>
+        <form method="post" action="./?page=main&amp;view=contacts">
+          <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="player_unblock"><input type="hidden" name="target" value="<?= (int)$person['id'] ?>">
+          <button class="button secondary" type="submit">Odblokuj</button>
+        </form>
+      </div>
       <?php endforeach; ?>
     </section>
     <?php elseif (($_GET['view'] ?? '') === 'market'): ?>
