@@ -262,6 +262,12 @@ if ($user && $db instanceof PDO && $showProfile) {
     $ownerStmt = $db->prepare('SELECT id, login FROM users WHERE id=? AND active=1');
     $ownerStmt->execute([$ownerId]);
     $guestbookOwner = $ownerStmt->fetch();
+    if ($guestbookOwner && (int)$guestbookOwner['id'] !== (int)$user['id']) {
+        $publicStmt=$db->prepare('SELECT profession,current_city,public_respect FROM player_stats WHERE user_id=?');
+        $publicStmt->execute([(int)$guestbookOwner['id']]);
+        $publicProfile=$publicStmt->fetch() ?: null;
+        $publicRank=get_player_rank($db,(int)$guestbookOwner['id']);
+    }
     if ($guestbookOwner) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['guestbook_add','guestbook_delete'], true)) {
             if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -556,6 +562,15 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <div class="stat"><span>Charyzma</span><strong><?= (int) $stats['charisma'] ?></strong></div>
             <div class="stat"><span>Spryt</span><strong><?= (int) $stats['cunning'] ?></strong></div>
             <div class="stat"><span>Kredyty</span><strong><?= number_format((int) ($stats['credits'] ?? 0), 0, '.', ',') ?></strong></div>
+        </div>
+        <?php endif; ?>
+        <?php if ($profileTab === 'overview' && $guestbookOwner && (int)$guestbookOwner['id'] !== (int)$user['id'] && $publicProfile): ?>
+        <div class="stats">
+          <div class="stat"><span>Login</span><strong><?= e($guestbookOwner['login']) ?></strong></div>
+          <div class="stat"><span>Miejsce w rankingu</span><strong>#<?= (int)$publicRank ?></strong></div>
+          <div class="stat"><span>Respekt publiczny</span><strong><?= number_format((int)$publicProfile['public_respect'],0,'.',' ') ?> pkt</strong></div>
+          <div class="stat"><span>Profesja</span><strong><?= e($publicProfile['profession'] ?? 'Nie wybrano') ?></strong></div>
+          <div class="stat"><span>Miasto</span><strong><?= e($publicProfile['current_city'] ?? 'Nie wybrano') ?></strong></div>
         </div>
         <?php endif; ?>
         <?php if ($profileTab === 'respect' && $guestbookOwner && (int)$guestbookOwner['id'] === (int)$user['id']): ?>
