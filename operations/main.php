@@ -110,6 +110,19 @@ if ($activeTravel) {
 }
 
 require __DIR__ . '/../base/contacts.php';
+$pendingContactCount = 0;
+if ($user && $db instanceof PDO) {
+    $db->exec("CREATE TABLE IF NOT EXISTS player_contacts (
+        user_low INT NOT NULL, user_high INT NOT NULL, requested_by INT NOT NULL,
+        status ENUM('pending','accepted') NOT NULL DEFAULT 'pending',
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_low,user_high), INDEX contacts_high(user_high,status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pendingContactsStmt=$db->prepare("SELECT COUNT(*) FROM player_contacts WHERE (user_low=? OR user_high=?) AND status='pending' AND requested_by<>?");
+    $pendingContactsStmt->execute([(int)$user['id'],(int)$user['id'],(int)$user['id']]);
+    $pendingContactCount=(int)$pendingContactsStmt->fetchColumn();
+}
 require_once __DIR__ . '/../base/robbery_rewards.php';
 $streetMessage = '';
 $streetReward = null;
@@ -512,7 +525,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <nav class="game-nav" id="gameNav">
         <a href="./?page=main&view=profile">Twój profil</a>
         <a href="./?page=main&view=missions">Misje</a>
-        <a href="./?page=main&amp;view=contacts">Kontakty</a>
+        <a href="./?page=main&amp;view=contacts">Kontakty<?= $pendingContactCount > 0 ? ' ('.$pendingContactCount.')' : '' ?></a>
         <a href="./?page=main&amp;view=wanted">Wanted</a>
         <a href="./?page=main&amp;view=travel">Podróż</a>
         <a href="./?page=main&amp;view=market">Rynek</a>
