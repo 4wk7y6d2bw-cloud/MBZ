@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = 'Brak połączenia z bazą.';
     } else {
         try {
-            $stmt = $db->prepare('UPDATE player_stats SET cash = 500 WHERE user_id = :id');
+            $stmt = $db->prepare('UPDATE player_stats SET cash = 500, respect = GREATEST(100, 100 + FLOOR((GREATEST(0,strength-10) + GREATEST(0,endurance-10) + GREATEST(0,intelligence-10) + GREATEST(0,charisma-10) + GREATEST(0,cunning-10))/20)) WHERE user_id = :id');
             $stmt->execute(['id' => (int) current_user()['id']]);
             $message = 'Gotowe. Twoje konto administratora ma teraz 500 $.';
         } catch (Throwable $e) {
