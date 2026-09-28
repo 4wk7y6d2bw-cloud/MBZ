@@ -150,17 +150,31 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
             $energyCost = $streetAction === 'street_taxi_robbery' ? 10 : 5;
             if ($currentEnergy === false || (int)$currentEnergy < $energyCost) {
                 $streetMessage = 'Potrzebujesz co najmniej '.$energyCost.'% energii.';
-            } elseif ($streetAction === 'street_taxi_robbery' && ($robberyPower < 25 || $robberyPower > 30)) {
-                $streetMessage = 'Napad na taksówkę wymaga mocy rabunku 25–30. Twoja moc: '.$robberyPower.'.';
             } else {
-                $streetReward = $streetAction === 'street_taxi_robbery' ? random_int(30,60) : random_int(10,20);
-                $rob = $db->prepare('UPDATE player_stats SET energy=energy-?,cash=cash+?,
-                    strength=strength+1,endurance=endurance+1,intelligence=intelligence+1,
-                    charisma=charisma+1,cunning=cunning+1 WHERE user_id=? AND energy>=?');
-                $rob->execute([$energyCost,$streetReward,(int)$user['id'],$energyCost]);
-                $firstDailyRobbery = award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day']);
-                $streetMessage = 'Rabunek udany! +'.$streetReward.' $ i +1 do każdej statystyki. -'.$energyCost.'% energii.'
-                    . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
+                $taxi = $streetAction === 'street_taxi_robbery';
+                // Przedział 25–30 oznacza poziom trudności, a nie blokadę akcji.
+                // Im bliżej/głębiej ponad przedział, tym większa szansa powodzenia; poniżej nadal można próbować.
+                $successChance = $taxi ? max(10, min(95, 50 + ($robberyPower - 25) * 8)) : 100;
+                $success = random_int(1,100) <= $successChance;
+                if ($success) {
+                    $streetReward = $taxi ? random_int(50,100) : random_int(10,20);
+                    $statGain = $taxi ? random_int(2,4) : 1;
+                    $rob = $db->prepare('UPDATE player_stats SET energy=energy-?,cash=cash+?,
+                        strength=strength+?,endurance=endurance+?,intelligence=intelligence+?,
+                        charisma=charisma+?,cunning=cunning+? WHERE user_id=? AND energy>=?');
+                    $rob->execute([$energyCost,$streetReward,$statGain,$statGain,$statGain,$statGain,$statGain,(int)$user['id'],$energyCost]);
+                    $firstDailyRobbery = award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day']);
+                    $streetMessage = 'Rabunek udany! +'.$streetReward.' $, +'.$statGain.' do każdej statystyki. -'.$energyCost.'% energii.'
+                        . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
+                } else {
+                    $statLoss = $taxi ? random_int(1,2) : 0;
+                    $fail = $db->prepare('UPDATE player_stats SET energy=energy-?,
+                        strength=GREATEST(1,strength-?),endurance=GREATEST(1,endurance-?),
+                        intelligence=GREATEST(1,intelligence-?),charisma=GREATEST(1,charisma-?),
+                        cunning=GREATEST(1,cunning-?) WHERE user_id=? AND energy>=?');
+                    $fail->execute([$energyCost,$statLoss,$statLoss,$statLoss,$statLoss,$statLoss,(int)$user['id'],$energyCost]);
+                    $streetMessage = 'Rabunek nieudany! -'.$energyCost.'% energii i -'.$statLoss.' do każdej statystyki.';
+                }
             }
             $db->commit();
             $stats = get_player_stats($db,(int)$user['id']);
@@ -1133,12 +1147,12 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <button type="submit" <?= !$stats || (int)$stats['energy'] < 5 ? 'disabled' : '' ?>>Napadnij na spożywczak</button>
           </form>
           <h3>Napad na taksówkę</h3>
-          <p class="muted">Koszt: 10% energii · Wymagana moc rabunku: 25–30 · Nagroda: 30–60 $ i +1 do każdej statystyki.</p>
+          <p class="muted">Koszt: 10% energii · Moc rabunku: 25–30 · Nagroda: 50–100 $ i +2–4 do każdej statystyki. Możesz próbować z dowolną mocą — zbyt niska moc zwiększa ryzyko niepowodzenia i utraty statystyk.</p>
           <p class="muted">Twoja moc rabunku: <strong><?= $robberyPower ?></strong></p>
           <form method="post" action="./?page=main&amp;location=ulica">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
             <input type="hidden" name="action" value="street_taxi_robbery">
-            <button type="submit" <?= !$stats || (int)$stats['energy'] < 10 || $robberyPower < 25 || $robberyPower > 30 ? 'disabled' : '' ?>>Napadnij na taksówkę</button>
+            <button type="submit" <?= !$stats || (int)$stats['energy'] < 10 ? 'disabled' : '' ?>>Napadnij na taksówkę</button>
           </form>
         <?php else: ?>
           <p class="muted">Tutaj pojawią się informacje i dostępne akcje tej lokacji.</p>
