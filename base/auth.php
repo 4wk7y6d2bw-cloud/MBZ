@@ -20,7 +20,7 @@ function ensure_player_stats(PDO $db, int $userId): void
     $stmt = $db->prepare(
         'INSERT IGNORE INTO player_stats
         (user_id, cash, credits, respect, profession, current_city, energy, tickets, strength, endurance, intelligence, charisma, cunning, tickets_last_grant)
-        VALUES (:user_id, 500, 0, 100, NULL, NULL, 100, 25, 10, 10, 10, 10, 10, NOW())'
+        VALUES (:user_id, 500, 0, 52, NULL, NULL, 100, 25, 10, 10, 10, 10, 10, NOW())'
     );
     $stmt->execute(['user_id' => $userId]);
 }
@@ -109,7 +109,7 @@ function get_player_stats(PDO $db, int $userId): ?array
 {
     ensure_player_stats($db, $userId);
     regenerate_player_energy($db, $userId);
-    $sync = $db->prepare('UPDATE player_stats SET respect=GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)+FLOOR((GREATEST(0,strength-10)+GREATEST(0,endurance-10)+GREATEST(0,intelligence-10)+GREATEST(0,charisma-10)+GREATEST(0,cunning-10))/20)) WHERE user_id=:user_id');
+    $sync = $db->prepare('UPDATE player_stats SET respect=FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/20) WHERE user_id=:user_id');
     $sync->execute(['user_id'=>$userId]);
     $stmt = $db->prepare('SELECT * FROM player_stats WHERE user_id = :user_id LIMIT 1');
     $stmt->execute(['user_id' => $userId]);
@@ -184,8 +184,8 @@ function update_game_clock(PDO $db): array
 {
     ensure_respect_history_table($db);
     $db->beginTransaction();
-    // Cash determines respect; the starting $500 does not count.
-    $db->exec('UPDATE player_stats SET respect=GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)+FLOOR((GREATEST(0,strength-10)+GREATEST(0,endurance-10)+GREATEST(0,intelligence-10)+GREATEST(0,charisma-10)+GREATEST(0,cunning-10))/20)) WHERE respect<>GREATEST(100,100+FLOOR(GREATEST(0,cash-500)/10)+FLOOR((GREATEST(0,strength-10)+GREATEST(0,endurance-10)+GREATEST(0,intelligence-10)+GREATEST(0,charisma-10)+GREATEST(0,cunning-10))/20))');
+    // All cash and all character stats count toward respect, without a starting bonus.
+    $db->exec('UPDATE player_stats SET respect=FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/20) WHERE respect<>FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/20)');
     try {
         $row = $db->query('SELECT * FROM game_state WHERE id = 1 FOR UPDATE')->fetch();
         if (!$row) throw new RuntimeException('Brak stanu gry.');
