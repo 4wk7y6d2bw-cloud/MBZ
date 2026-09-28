@@ -474,7 +474,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
 
     <?php if ($showProfile): ?>
     <section class="card location-panel">
-        <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← <?= $activeTravel ? 'Podróże' : 'Powrót do menu' ?></a>
+        <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
         <h2><?= $guestbookOwner ? 'Profil: '.e($guestbookOwner['login']) : 'Profil gracza' ?></h2>
         <?php $profileId = (int)($guestbookOwner['id'] ?? $user['id']); ?>
         <nav class="profile-tabs" aria-label="Zakładki profilu">
@@ -583,7 +583,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     </section>
     <?php elseif ($showTravel): ?>
     <section class="card location-panel">
-      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=profile' : './?page=main' ?>">← <?= $activeTravel ? 'Twój profil' : 'Powrót do menu' ?></a>
+      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=profile' : './?page=main' ?>">← Powrót do menu</a>
       <h2>Podróże</h2>
       <p class="muted">Cena i czas podróży zależą od odległości oraz Twojego respektu.</p>
       <?php if ($travelMessage): ?><p><?= e($travelMessage) ?></p><?php endif; ?>
@@ -616,13 +616,13 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     </section>
     <?php elseif (($_GET['view'] ?? '') === 'contacts' || ($_GET['view'] ?? '') === 'market'): ?>
     <section class="card location-panel">
-      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← <?= $activeTravel ? 'Podróże' : 'Powrót do menu' ?></a>
+      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
       <h2><?= ($_GET['view'] ?? '') === 'contacts' ? 'Kontakty' : 'Rynek' ?></h2>
       <p class="muted">Ta zakładka jest w przygotowaniu.</p>
     </section>
     <?php elseif ($showWanted): ?>
     <section class="card location-panel">
-      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← <?= $activeTravel ? 'Podróże' : 'Powrót do menu' ?></a>
+      <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
       <h2>WANTED — dzień <?= (int)$gameState['game_day'] ?></h2>
       <p class="muted">Cel: gracz z największym przyrostem respektu w ostatnim zakończonym dniu gry. Cel nie zmienia się w trakcie dnia.</p>
       <?php if ($wantedMessage !== ''): ?><p class="stat"><?= e($wantedMessage) ?></p><?php endif; ?>
@@ -654,7 +654,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     </section>
     <?php elseif ($showMissions): ?>
     <section class="card location-panel">
-        <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+        <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
         <h2>Misje</h2>
         <p class="muted">Wykonuj zadania, odbieraj nagrody i odblokowuj nowe lokacje.</p>
         <?php if ($missionMessage !== ''): ?><p class="stat"><?= e($missionMessage) ?></p><?php endif; ?>
@@ -781,7 +781,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     </section>
     <?php else: ?>
     <section class="card location-panel" aria-label="Wybrana lokacja">
-        <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
+        <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
         <h2><?= e($locationNames[$selectedLocation]) ?></h2>
         <?php if ($selectedLocation === 'ulica'): ?>
           <h3>Rabunek na spożywczak</h3>
