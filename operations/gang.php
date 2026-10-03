@@ -12,7 +12,7 @@ if (!$db instanceof PDO) {
 
 $db->exec("CREATE TABLE IF NOT EXISTS gangs (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(40) NOT NULL,
+    name VARCHAR(20) NOT NULL,
     tag VARCHAR(8) NOT NULL,
     owner_id INT NOT NULL,
     respect BIGINT NOT NULL DEFAULT 0,
@@ -34,7 +34,7 @@ $db->exec("CREATE TABLE IF NOT EXISTS gang_members (
 $message = '';
 $messageType = 'ok';
 
-$membershipStmt = $db->prepare("SELECT g.id,g.name,g.tag,g.owner_id,g.respect,gm.role
+$membershipStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,g.respect,gm.role
     FROM gang_members gm JOIN gangs g ON g.id=gm.gang_id WHERE gm.user_id=? LIMIT 1");
 $membershipStmt->execute([(int)$user['id']]);
 $gang = $membershipStmt->fetch() ?: null;
@@ -50,8 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         $name = trim(is_string($_POST['name'] ?? null) ? $_POST['name'] : '');
         $tag = mb_strtoupper(trim(is_string($_POST['tag'] ?? null) ? $_POST['tag'] : ''));
 
-        if (mb_strlen($name) < 3 || mb_strlen($name) > 40) {
-            $message = 'Nazwa gangu musi mieć od 3 do 40 znaków.';
+        if (mb_strlen($name) < 3 || mb_strlen($name) > 20) {
+            $message = 'Nazwa gangu musi mieć od 3 do 20 znaków.';
             $messageType = 'error';
         } elseif (!preg_match('/^[\p{L}\p{N} ._-]+$/u', $name)) {
             $message = 'Nazwa zawiera niedozwolone znaki.';
@@ -69,15 +69,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
                     throw new RuntimeException('Należysz już do gangu.');
                 }
 
-                $duplicate = $db->prepare('SELECT id FROM gangs WHERE name=? OR tag=? LIMIT 1');
-                $duplicate->execute([$name,$tag]);
+                $duplicate = $db->prepare('SELECT id FROM gangs WHERE name=? LIMIT 1');
+                $duplicate->execute([$name]);
                 if ($duplicate->fetchColumn()) {
-                    throw new RuntimeException('Gang o takiej nazwie lub tagu już istnieje.');
+                    throw new RuntimeException('Gang o takiej nazwie już istnieje.');
                 }
 
                 // Utworzenie gangu jest darmowe — brak operacji na gotówce gracza.
-                $create = $db->prepare('INSERT INTO gangs(name,tag,owner_id) VALUES(?,?,?)');
-                $create->execute([$name,$tag,(int)$user['id']]);
+                $create = $db->prepare('INSERT INTO gangs(name,owner_id) VALUES(?,?)');
+                $create->execute([$name,(int)$user['id']]);
                 $gangId = (int)$db->lastInsertId();
 
                 $join = $db->prepare("INSERT INTO gang_members(gang_id,user_id,role) VALUES(?,?,'boss')");
@@ -130,14 +130,14 @@ if (isset($_GET['created']) && $gang) {
 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
 <input type="hidden" name="action" value="create_gang">
 <label for="gang-name">Nazwa gangu</label>
-<input id="gang-name" name="name" type="text" minlength="3" maxlength="40" required autocomplete="off" placeholder="np. Warszawska Mafia">
+<input id="gang-name" name="name" type="text" minlength="3" maxlength="20" required autocomplete="off" placeholder="np. Warszawska Mafia">
 <label for="gang-tag">Tag gangu</label>
 <input id="gang-tag" name="tag" type="text" minlength="2" maxlength="8" required autocomplete="off" placeholder="np. WM" style="text-transform:uppercase">
-<p class="muted">Tag: 2–8 znaków, litery A–Z lub cyfry. Nazwa i tag muszą być unikalne.</p>
+<p class="muted">Nazwa musi mieć od 3 do 20 znaków i być unikalna.</p>
 <button type="submit">Utwórz gang za darmo</button>
 </form>
 <?php else: ?>
-<h2><?= e($gang['name']) ?> <span class="tag">[<?= e($gang['tag']) ?>]</span></h2>
+<h2><?= e($gang['name']) ?></h2>
 <div class="stats">
 <div class="stat"><span>Twoja ranga</span><strong><?= $gang['role']==='boss'?'Szef':'Członek' ?></strong></div>
 <div class="stat"><span>Respekt gangu</span><strong><?= number_format((int)$gang['respect'],0,'.',' ') ?></strong></div>
