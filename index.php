@@ -15,14 +15,8 @@ csrf_token();
 $page = isset($_GET['page']) && is_string($_GET['page']) ? $_GET['page'] : 'main';
 $page = preg_replace('/[^a-zA-Z0-9_-]/', '', $page) ?: 'main';
 
-// Gang pozostaje kafelkiem lokacji w menu, ale ma własną obsługę.
-if ($page === 'main' && ($_GET['location'] ?? '') === 'gang') {
-    $page = 'gang';
-}
-
 $allowedPages = [
     'main',
-    'gang',
     'live_stats',
     'profession',
     'admin',
