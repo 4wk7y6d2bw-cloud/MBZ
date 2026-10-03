@@ -87,8 +87,11 @@ if ($showRanking && $rankingType === 'gangs' && $user && $db instanceof PDO) {
         ORDER BY respect DESC,g.id ASC")->fetchAll();
 }
 if ($showRanking && $rankingType === 'gangs' && $viewGangId > 0 && $user && $db instanceof PDO) {
-    $viewGangStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,u.login AS leader
-        FROM gangs g JOIN users u ON u.id=g.owner_id WHERE g.id=? LIMIT 1");
+    $viewGangStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,u.login AS leader,ps.respect AS leader_respect,ps.profession AS leader_profession
+        FROM gangs g
+        JOIN users u ON u.id=g.owner_id
+        LEFT JOIN player_stats ps ON ps.user_id=g.owner_id
+        WHERE g.id=? LIMIT 1");
     $viewGangStmt->execute([$viewGangId]);
     $viewGang = $viewGangStmt->fetch() ?: null;
     if ($viewGang) {
@@ -937,6 +940,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <?php if ($viewGang): ?>
       <h2><?= e($viewGang['name']) ?></h2>
       <div class="stat"><span>Lider</span><strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$viewGang['owner_id'] ?>"><?= e($viewGang['leader']) ?></a></strong></div>
+      <div class="stat"><span>Respekt lidera</span><strong><?= number_format((int)($viewGang['leader_respect'] ?? 0),0,'.',' ') ?> pkt</strong></div>
+      <div class="stat"><span>Profesja lidera</span><strong><?= e((string)($viewGang['leader_profession'] ?? '—')) ?></strong></div>
       <?php if ($viewGangIsMember): ?>
         <p class="muted">Należysz do tego gangu.</p>
         <a class="button" href="./?page=main&amp;location=gang">Przejdź do swojego gangu</a>
