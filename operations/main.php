@@ -160,7 +160,8 @@ if ($user && $db instanceof PDO) {
     $leaderStmt->execute([(int)$user['id'],(int)$user['id']]);
     $contactGangLeaderId = (int)($leaderStmt->fetchColumn() ?: 0);
 
-    if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='gang_invite') {
+    if ($_SERVER['REQUEST_METHOD']==='POST' && in_array($_POST['action'] ?? '', ['gang_invite','gang_invite_cancel'], true)) {
+        $gangInviteAction = $_POST['action'];
         $target = filter_var($_POST['target'] ?? null, FILTER_VALIDATE_INT);
         if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
             $contactsMessage = 'Sesja wygasła. Odśwież stronę.';
@@ -168,19 +169,32 @@ if ($user && $db instanceof PDO) {
             $contactsMessage = 'Nie możesz wysłać tego zaproszenia.';
         } else {
             $low=min((int)$user['id'],(int)$target); $high=max((int)$user['id'],(int)$target);
-            $friend=$db->prepare("SELECT 1 FROM player_contacts WHERE user_low=? AND user_high=? AND status='accepted' LIMIT 1");
-            $friend->execute([$low,$high]);
-            $pending=$db->prepare("SELECT 1 FROM gang_invites WHERE gang_id=? AND invited_user_id=? AND status='pending' LIMIT 1");
-            $pending->execute([$contactGangLeaderId,(int)$target]);
-            if (!$friend->fetchColumn()) $contactsMessage='Do gangu możesz zapraszać tylko znajomych.';
-            elseif ($pending->fetchColumn()) $contactsMessage='Ten gracz jest już zaproszony do gangu.';
-            else {
-                $invite=$db->prepare("INSERT INTO gang_invites(gang_id,invited_user_id,invited_by,status) VALUES (?,?,?,'pending')");
-                $invite->execute([$contactGangLeaderId,(int)$target,(int)$user['id']]);
-                $contactsMessage='Zaproszenie do gangu zostało wysłane.';
+            if ($gangInviteAction==='gang_invite_cancel') {
+                $cancel=$db->prepare("UPDATE gang_invites SET status='cancelled',responded_at=NOW() WHERE gang_id=? AND invited_user_id=? AND invited_by=? AND status='pending'");
+                $cancel->execute([$contactGangLeaderId,(int)$target,(int)$user['id']]);
+                $contactsMessage=$cancel->rowCount()?'Zaproszenie do gangu zostało anulowane.':'Nie znaleziono oczekującego zaproszenia.';
+            } else {
+                $friend=$db->prepare("SELECT 1 FROM player_contacts WHERE user_low=? AND user_high=? AND status='accepted' LIMIT 1");
+                $friend->execute([$low,$high]);
+                $pending=$db->prepare("SELECT 1 FROM gang_invites WHERE gang_id=? AND invited_user_id=? AND status='pending' LIMIT 1");
+                $pending->execute([$contactGangLeaderId,(int)$target]);
+                if (!$friend->fetchColumn()) $contactsMessage='Do gangu możesz zapraszać tylko znajomych.';
+                elseif ($pending->fetchColumn()) $contactsMessage='Ten gracz jest już zaproszony do gangu.';
+                else {
+                    $invite=$db->prepare("INSERT INTO gang_invites(gang_id,invited_user_id,invited_by,status) VALUES (?,?,?,'pending')");
+                    $invite->execute([$contactGangLeaderId,(int)$target,(int)$user['id']]);
+                    $contactsMessage='Zaproszenie do gangu zostało wysłane.';
+                }
             }
         }
     }
+}
+
+$contactGangPendingInvites = [];
+if ($contactGangLeaderId && $db instanceof PDO) {
+    $pendingGangInvitesStmt=$db->prepare("SELECT invited_user_id FROM gang_invites WHERE gang_id=? AND invited_by=? AND status='pending'");
+    $pendingGangInvitesStmt->execute([$contactGangLeaderId,(int)$user['id']]);
+    $contactGangPendingInvites=array_map('intval',$pendingGangInvitesStmt->fetchAll(PDO::FETCH_COLUMN));
 }
 
 // Gang działa jako zwykła lokacja w głównym layoucie gry.
@@ -1090,7 +1104,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php if($already): ?><span class="muted">Znajomy lub zaproszenie oczekujące</span><?php elseif(!$activeTravel): ?><form method="post" action="./?page=main&amp;view=contacts&amp;contacts_tab=friends"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="friend_send"><input type="hidden" name="target" value="<?= (int)$person['id'] ?>"><button class="button" type="submit">Zaproś</button></form><?php endif; ?></div><?php endforeach; endif; ?>
         <?php foreach([['Znajomi',$contactFriends,'player_block'=>'Zablokuj','friend_remove'=>'Usuń znajomego'],['Otrzymane zaproszenia',$contactIncoming,'friend_accept'=>'Akceptuj','friend_reject'=>'Odrzuć'],['Wysłane zaproszenia',$contactOutgoing,'friend_cancel'=>'Anuluj']] as $group): $heading=$group[0];$people=$group[1];unset($group[0],$group[1]); ?>
         <h3 style="margin-top:25px"><?= e($heading) ?> (<?= count($people) ?>)</h3><?php if(!$people): ?><p class="muted">Brak.</p><?php endif; ?>
-        <?php foreach($people as $person): ?><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid #333"><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$person['id'] ?>"><?= e($person['login']) ?></a><?php if(!$activeTravel): ?><div style="display:flex;gap:8px;flex-wrap:wrap"><?php if($heading==='Znajomi' && $contactGangLeaderId): ?><form method="post" action="./?page=main&amp;view=contacts&amp;contacts_tab=friends"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="gang_invite"><input type="hidden" name="target" value="<?= (int)$person['id'] ?>"><button class="button" type="submit">Zaproś do gangu</button></form><?php endif; ?><?php foreach($group as $action=>$label): ?><form method="post" action="./?page=main&amp;view=contacts&amp;contacts_tab=friends"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="<?= e($action) ?>"><input type="hidden" name="target" value="<?= (int)$person['id'] ?>"><button class="button secondary" type="submit"><?= e($label) ?></button></form><?php endforeach; ?><a class="button" href="./?page=main&amp;view=contacts&amp;contacts_tab=messages&amp;chat=<?= (int)$person['id'] ?>">Napisz PW</a></div><?php endif; ?></div><?php endforeach; endforeach; ?>
+        <?php foreach($people as $person): ?><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid #333"><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$person['id'] ?>"><?= e($person['login']) ?></a><?php if(!$activeTravel): ?><div style="display:flex;gap:8px;flex-wrap:wrap"><?php if($heading==='Znajomi' && $contactGangLeaderId): $gangInvitePending=in_array((int)$person['id'],$contactGangPendingInvites,true); ?><form method="post" action="./?page=main&amp;view=contacts&amp;contacts_tab=friends"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="<?= $gangInvitePending?'gang_invite_cancel':'gang_invite' ?>"><input type="hidden" name="target" value="<?= (int)$person['id'] ?>"><button class="button<?= $gangInvitePending?' secondary':'' ?>" type="submit"><?= $gangInvitePending?'Anuluj zaproszenie':'Zaproś do gangu' ?></button></form><?php endif; ?><?php foreach($group as $action=>$label): ?><form method="post" action="./?page=main&amp;view=contacts&amp;contacts_tab=friends"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="<?= e($action) ?>"><input type="hidden" name="target" value="<?= (int)$person['id'] ?>"><button class="button secondary" type="submit"><?= e($label) ?></button></form><?php endforeach; ?><a class="button" href="./?page=main&amp;view=contacts&amp;contacts_tab=messages&amp;chat=<?= (int)$person['id'] ?>">Napisz PW</a></div><?php endif; ?></div><?php endforeach; endforeach; ?>
       <?php endif; ?>
     </section>
     <?php elseif (($_GET['view'] ?? '') === 'market'): ?>
