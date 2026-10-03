@@ -1303,13 +1303,13 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <?php else: ?>
             <h3><?= e($gang['name']) ?></h3>
             <div class="stats">
-              <div class="stat"><span>Twoja ranga</span><strong><?= $gang['role']==='boss'?'Szef':'Członek' ?></strong></div>
+              <div class="stat"><span>Twoja ranga</span><strong><?= $gang['role']==='boss'?'Lider':'Członek' ?></strong></div>
               <div class="stat"><span>Respekt gangu</span><strong><?= number_format((int)$gang['respect'],0,'.',' ') ?></strong></div>
               <div class="stat"><span>Liczba członków</span><strong><?= count($gangMembers) ?></strong></div>
             </div>
             <h3>Członkowie</h3>
             <?php foreach ($gangMembers as $member): ?>
-              <div class="stat"><strong><?= e($member['login']) ?></strong> <span><?= $member['role']==='boss'?'Szef':'Członek' ?></span></div>
+              <div class="stat"><strong><?= e($member['login']) ?></strong> <span><?= $member['role']==='boss'?'Lider':'Członek' ?></span></div>
             <?php endforeach; ?>
           <?php endif; ?>
         <?php else: ?>
