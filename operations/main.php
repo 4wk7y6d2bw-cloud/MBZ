@@ -1366,7 +1366,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <div class="stats">
               <div class="stat"><span>Twoja ranga</span><strong><?= $gang['role']==='boss'?'Lider':'Członek' ?></strong></div>
               <div class="stat"><span>Respekt gangu</span><strong><?= number_format((int)$gang['respect'],0,'.',' ') ?></strong></div>
-              <div class="stat"><span>Liczba członków</span><strong><?= count($gangMembers) ?></strong></div>
+              <div class="stat"><span>Liczba członków</span><strong><?= count($gangMembers) ?>/20</strong></div>
             </div>
             <h3>Członkowie</h3>
             <?php foreach ($gangMembers as $member): ?>
