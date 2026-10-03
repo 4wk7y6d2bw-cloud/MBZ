@@ -66,6 +66,7 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
     ? $_GET['location'] : '';
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 $showRanking = ($_GET['view'] ?? '') === 'ranking';
+$showNotifications = ($_GET['view'] ?? '') === 'notifications';
 $rankingSearch = trim(is_string($_GET['nick'] ?? null) ? $_GET['nick'] : '');
 $rankingSearch = mb_substr($rankingSearch, 0, 60);
 $rankingPage = max(1, min(100000, (int)($_GET['p'] ?? 1)));
@@ -689,6 +690,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&amp;view=travel">Podróż</a>
         <a href="./?page=main&amp;view=market">Rynek</a>
         <a href="./?page=main&amp;view=ranking">Ranking</a>
+        <a href="./?page=main&amp;view=notifications">Powiadomienia</a>
     </nav>
 
     <?php if ($activeTravel): ?>
@@ -893,6 +895,11 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </script>
 
       <?php endif; ?>
+    </section>
+    <?php elseif ($showNotifications): ?>
+    <section class="card">
+        <h2>Powiadomienia</h2>
+        <p class="muted">Brak powiadomień.</p>
     </section>
     <?php elseif ($showRanking): ?>
     <section class="card location-panel">
