@@ -76,10 +76,12 @@ $rankingTotal = 0;
 $rankingPages = 1;
 $rankingGangs = [];
 if ($showRanking && $rankingType === 'gangs' && $user && $db instanceof PDO) {
-    $rankingGangs = $db->query("SELECT g.id,g.name,g.respect,COUNT(gm.user_id) AS member_count
-        FROM gangs g LEFT JOIN gang_members gm ON gm.gang_id=g.id
-        GROUP BY g.id,g.name,g.respect
-        ORDER BY g.respect DESC,g.id ASC")->fetchAll();
+    $rankingGangs = $db->query("SELECT g.id,g.name,COALESCE(SUM(ps.public_respect),0) AS respect,COUNT(gm.user_id) AS member_count
+        FROM gangs g
+        LEFT JOIN gang_members gm ON gm.gang_id=g.id
+        LEFT JOIN player_stats ps ON ps.user_id=gm.user_id
+        GROUP BY g.id,g.name
+        ORDER BY respect DESC,g.id ASC")->fetchAll();
 }
 if ($showRanking && $rankingType === 'players' && $user && $db instanceof PDO) {
     $rankingWhere = 'FROM player_stats p JOIN users u ON u.id=p.user_id WHERE u.active=1';
@@ -920,7 +922,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <h2>🏆 Ranking gangów</h2>
       <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;text-align:left">
-        <thead><tr><th style="padding:12px">Miejsce</th><th style="padding:12px">Gang</th><th style="padding:12px">Respekt</th><th style="padding:12px">Członkowie</th></tr></thead>
+        <thead><tr><th style="padding:12px">Miejsce</th><th style="padding:12px">Nazwa</th><th style="padding:12px">Respekt</th><th style="padding:12px">Członkowie</th></tr></thead>
         <tbody>
         <?php foreach ($rankingGangs as $index=>$rankedGang): ?>
           <tr style="border-top:1px solid #363636">
