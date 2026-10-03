@@ -940,8 +940,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <?php if ($viewGang): ?>
       <h2><?= e($viewGang['name']) ?></h2>
       <div class="stat"><span>Lider</span><strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$viewGang['owner_id'] ?>"><?= e($viewGang['leader']) ?></a></strong></div>
-      <div class="stat"><span>Respekt lidera</span><strong><?= number_format((int)($viewGang['leader_respect'] ?? 0),0,'.',' ') ?> pkt</strong></div>
-      <div class="stat"><span>Profesja lidera</span><strong><?= e((string)($viewGang['leader_profession'] ?? '—')) ?></strong></div>
+      <div class="stat"><span>Respekt</span><strong><?= number_format((int)($viewGang['leader_respect'] ?? 0),0,'.',' ') ?> pkt</strong></div>
+      <div class="stat"><span>Profesja</span><strong><?= e((string)($viewGang['leader_profession'] ?? '—')) ?></strong></div>
       <?php if ($viewGangIsMember): ?>
         <p class="muted">Należysz do tego gangu.</p>
         <a class="button" href="./?page=main&amp;location=gang">Przejdź do swojego gangu</a>
