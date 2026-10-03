@@ -170,12 +170,9 @@ if ($user && $db instanceof PDO) {
             $low=min((int)$user['id'],(int)$target); $high=max((int)$user['id'],(int)$target);
             $friend=$db->prepare("SELECT 1 FROM player_contacts WHERE user_low=? AND user_high=? AND status='accepted' LIMIT 1");
             $friend->execute([$low,$high]);
-            $member=$db->prepare('SELECT 1 FROM gang_members WHERE user_id=? LIMIT 1');
-            $member->execute([(int)$target]);
             $pending=$db->prepare("SELECT 1 FROM gang_invites WHERE gang_id=? AND invited_user_id=? AND status='pending' LIMIT 1");
             $pending->execute([$contactGangLeaderId,(int)$target]);
             if (!$friend->fetchColumn()) $contactsMessage='Do gangu możesz zapraszać tylko znajomych.';
-            elseif ($member->fetchColumn()) $contactsMessage='Ten gracz należy już do gangu.';
             elseif ($pending->fetchColumn()) $contactsMessage='Ten gracz jest już zaproszony do gangu.';
             else {
                 $invite=$db->prepare("INSERT INTO gang_invites(gang_id,invited_user_id,invited_by,status) VALUES (?,?,?,'pending')");
