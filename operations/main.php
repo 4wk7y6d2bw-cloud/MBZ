@@ -936,9 +936,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <?php if ($rankingType === 'gangs'): ?>
       <?php if ($viewGang): ?>
       <h2><?= e($viewGang['name']) ?></h2>
-      <?php if (!$viewGangIsMember): ?>
-        <div class="stat"><span>Lider</span><strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$viewGang['owner_id'] ?>"><?= e($viewGang['leader']) ?></a></strong></div>
-      <?php else: ?>
+      <div class="stat"><span>Lider</span><strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$viewGang['owner_id'] ?>"><?= e($viewGang['leader']) ?></a></strong></div>
+      <?php if ($viewGangIsMember): ?>
         <p class="muted">Należysz do tego gangu.</p>
         <a class="button" href="./?page=main&amp;location=gang">Przejdź do swojego gangu</a>
       <?php endif; ?>
