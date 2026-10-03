@@ -67,13 +67,21 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 $showRanking = ($_GET['view'] ?? '') === 'ranking';
 $showNotifications = ($_GET['view'] ?? '') === 'notifications';
+$rankingType = ($_GET['ranking'] ?? '') === 'gangs' ? 'gangs' : 'players';
 $rankingSearch = trim(is_string($_GET['nick'] ?? null) ? $_GET['nick'] : '');
 $rankingSearch = mb_substr($rankingSearch, 0, 60);
 $rankingPage = max(1, min(100000, (int)($_GET['p'] ?? 1)));
 $rankingPlayers = [];
 $rankingTotal = 0;
 $rankingPages = 1;
-if ($showRanking && $user && $db instanceof PDO) {
+$rankingGangs = [];
+if ($showRanking && $rankingType === 'gangs' && $user && $db instanceof PDO) {
+    $rankingGangs = $db->query("SELECT g.id,g.name,g.respect,COUNT(gm.user_id) AS member_count
+        FROM gangs g LEFT JOIN gang_members gm ON gm.gang_id=g.id
+        GROUP BY g.id,g.name,g.respect
+        ORDER BY g.respect DESC,g.id ASC")->fetchAll();
+}
+if ($showRanking && $rankingType === 'players' && $user && $db instanceof PDO) {
     $rankingWhere = 'FROM player_stats p JOIN users u ON u.id=p.user_id WHERE u.active=1';
     $rankingParams = [];
     if ($rankingSearch !== '') {
@@ -904,6 +912,29 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     <?php elseif ($showRanking): ?>
     <section class="card location-panel">
       <a class="button secondary back-button" href="<?= $activeTravel ? './?page=main&view=travel' : './?page=main' ?>">← Powrót do menu</a>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 22px">
+        <a class="button <?= $rankingType==='players'?'':'secondary' ?>" href="./?page=main&amp;view=ranking">Ranking graczy</a>
+        <a class="button <?= $rankingType==='gangs'?'':'secondary' ?>" href="./?page=main&amp;view=ranking&amp;ranking=gangs">Ranking gangów</a>
+      </div>
+      <?php if ($rankingType === 'gangs'): ?>
+      <h2>🏆 Ranking gangów</h2>
+      <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;text-align:left">
+        <thead><tr><th style="padding:12px">Miejsce</th><th style="padding:12px">Gang</th><th style="padding:12px">Respekt</th><th style="padding:12px">Członkowie</th></tr></thead>
+        <tbody>
+        <?php foreach ($rankingGangs as $index=>$rankedGang): ?>
+          <tr style="border-top:1px solid #363636">
+            <td style="padding:12px">#<?= $index+1 ?></td>
+            <td style="padding:12px;font-weight:700"><?= e($rankedGang['name']) ?></td>
+            <td style="padding:12px"><?= number_format((int)$rankedGang['respect'],0,'.',' ') ?></td>
+            <td style="padding:12px"><?= (int)$rankedGang['member_count'] ?></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if (!$rankingGangs): ?><tr><td colspan="4" style="padding:15px">Brak gangów.</td></tr><?php endif; ?>
+        </tbody>
+      </table>
+      </div>
+      <?php else: ?>
       <h2>🏆 Ranking graczy</h2>
       <form method="get" action="./" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 20px">
         <input type="hidden" name="page" value="main">
@@ -934,6 +965,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <span>Strona <?= $rankingPage ?> z <?= $rankingPages ?></span>
         <?php if ($rankingPage<$rankingPages): ?><a class="button secondary" href="./?page=main&amp;view=ranking&amp;nick=<?= urlencode($rankingSearch) ?>&amp;p=<?= $rankingPage+1 ?>">Następna →</a><?php endif; ?>
       </nav>
+      <?php endif; ?>
       <?php endif; ?>
     </section>
     <?php elseif (($_GET['view'] ?? '') === 'contacts'): ?>
