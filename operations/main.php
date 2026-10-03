@@ -75,6 +75,9 @@ $rankingPlayers = [];
 $rankingTotal = 0;
 $rankingPages = 1;
 $rankingGangs = [];
+$viewGang = null;
+$viewGangIsMember = false;
+$viewGangId = max(0, (int)($_GET['gang'] ?? 0));
 if ($showRanking && $rankingType === 'gangs' && $user && $db instanceof PDO) {
     $rankingGangs = $db->query("SELECT g.id,g.name,COALESCE(SUM(ps.public_respect),0) AS respect,COUNT(gm.user_id) AS member_count
         FROM gangs g
@@ -82,6 +85,17 @@ if ($showRanking && $rankingType === 'gangs' && $user && $db instanceof PDO) {
         LEFT JOIN player_stats ps ON ps.user_id=gm.user_id
         GROUP BY g.id,g.name
         ORDER BY respect DESC,g.id ASC")->fetchAll();
+}
+if ($showRanking && $rankingType === 'gangs' && $viewGangId > 0 && $user && $db instanceof PDO) {
+    $viewGangStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,u.login AS leader
+        FROM gangs g JOIN users u ON u.id=g.owner_id WHERE g.id=? LIMIT 1");
+    $viewGangStmt->execute([$viewGangId]);
+    $viewGang = $viewGangStmt->fetch() ?: null;
+    if ($viewGang) {
+        $viewMemberStmt = $db->prepare('SELECT 1 FROM gang_members WHERE gang_id=? AND user_id=? LIMIT 1');
+        $viewMemberStmt->execute([$viewGangId,(int)$user['id']]);
+        $viewGangIsMember = (bool)$viewMemberStmt->fetchColumn();
+    }
 }
 if ($showRanking && $rankingType === 'players' && $user && $db instanceof PDO) {
     $rankingWhere = 'FROM player_stats p JOIN users u ON u.id=p.user_id WHERE u.active=1';
@@ -919,6 +933,16 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a class="button <?= $rankingType==='gangs'?'':'secondary' ?>" href="./?page=main&amp;view=ranking&amp;ranking=gangs">Ranking gangów</a>
       </div>
       <?php if ($rankingType === 'gangs'): ?>
+      <?php if ($viewGang): ?>
+      <h2><?= e($viewGang['name']) ?></h2>
+      <?php if (!$viewGangIsMember): ?>
+        <div class="stat"><span>Lider</span><strong><a style="color:inherit" href="./?page=main&amp;view=profile&amp;player=<?= (int)$viewGang['owner_id'] ?>"><?= e($viewGang['leader']) ?></a></strong></div>
+      <?php else: ?>
+        <p class="muted">Należysz do tego gangu.</p>
+        <a class="button" href="./?page=main&amp;location=gang">Przejdź do swojego gangu</a>
+      <?php endif; ?>
+      <a class="button secondary" href="./?page=main&amp;view=ranking&amp;ranking=gangs">← Wróć do rankingu gangów</a>
+      <?php else: ?>
       <h2>🏆 Ranking gangów</h2>
       <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;text-align:left">
@@ -927,7 +951,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php foreach ($rankingGangs as $index=>$rankedGang): ?>
           <tr style="border-top:1px solid #363636">
             <td style="padding:12px">#<?= $index+1 ?></td>
-            <td style="padding:12px;font-weight:700"><?= e($rankedGang['name']) ?></td>
+            <td style="padding:12px;font-weight:700"><a style="color:inherit" href="./?page=main&amp;view=ranking&amp;ranking=gangs&amp;gang=<?= (int)$rankedGang['id'] ?>"><?= e($rankedGang['name']) ?></a></td>
             <td style="padding:12px"><?= number_format((int)$rankedGang['respect'],0,'.',' ') ?></td>
             <td style="padding:12px"><?= (int)$rankedGang['member_count'] ?></td>
           </tr>
@@ -936,6 +960,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         </tbody>
       </table>
       </div>
+      <?php endif; ?>
       <?php else: ?>
       <h2>🏆 Ranking graczy</h2>
       <form method="get" action="./" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 20px">
