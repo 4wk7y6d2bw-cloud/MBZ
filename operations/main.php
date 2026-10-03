@@ -407,13 +407,12 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                     $streetMessage = 'Rabunek udany! +'.$streetReward.' $, +'.$statGain.' do każdej statystyki. -'.$energyCost.'% energii.'
                         . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
                 } else {
-                    $statLoss = $taxi ? random_int(1,2) : 0;
                     $fail = $db->prepare('UPDATE player_stats SET energy=energy-?,
-                        strength=GREATEST(1,strength-?),endurance=GREATEST(1,endurance-?),
-                        intelligence=GREATEST(1,intelligence-?),charisma=GREATEST(1,charisma-?),
-                        cunning=GREATEST(1,cunning-?) WHERE user_id=? AND energy>=?');
-                    $fail->execute([$energyCost,$statLoss,$statLoss,$statLoss,$statLoss,$statLoss,(int)$user['id'],$energyCost]);
-                    $streetMessage = 'Rabunek nieudany! -'.$energyCost.'% energii i -'.$statLoss.' do każdej statystyki.';
+                        strength=GREATEST(1,FLOOR(strength*0.98)),endurance=GREATEST(1,FLOOR(endurance*0.98)),
+                        intelligence=GREATEST(1,FLOOR(intelligence*0.98)),charisma=GREATEST(1,FLOOR(charisma*0.98)),
+                        cunning=GREATEST(1,FLOOR(cunning*0.98)) WHERE user_id=? AND energy>=?');
+                    $fail->execute([$energyCost,(int)$user['id'],$energyCost]);
+                    $streetMessage = 'Rabunek nieudany! -'.$energyCost.'% energii i -2% każdej statystyki.';
                 }
             }
             $db->commit();
@@ -471,6 +470,13 @@ if ($user && $db instanceof PDO && $selectedLocation==='ulica' && $streetGang &&
                 }
                 if($failed) {
                     foreach($players as $pl) {
+                        $db->prepare("UPDATE player_stats SET
+                            strength=GREATEST(1,FLOOR(strength*0.98)),
+                            endurance=GREATEST(1,FLOOR(endurance*0.98)),
+                            intelligence=GREATEST(1,FLOOR(intelligence*0.98)),
+                            charisma=GREATEST(1,FLOOR(charisma*0.98)),
+                            cunning=GREATEST(1,FLOOR(cunning*0.98))
+                            WHERE user_id=?")->execute([(int)$pl['user_id']]);
                         $respectStmt=$db->prepare("SELECT FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/20) FROM player_stats WHERE user_id=?");
                         $respectStmt->execute([(int)$pl['user_id']]);
                         $respect=max(1,(int)$respectStmt->fetchColumn());
@@ -1512,7 +1518,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <?php if ($streetTab==='gang' && $streetGang): ?>
             <h3>Napad na konwój</h3>
             <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i +5–8 do każdej statystyki.</p>
-            <p class="muted">Każdy uczestnik jest sprawdzany względem losowego progu 50–60. Jeśli choć jeden go nie spełni, cały zespół trafia do więzienia na 60 minut.</p>
+            <p class="muted">Każdy uczestnik jest sprawdzany względem losowego progu 50–60. Jeśli choć jeden go nie spełni, każdy traci 2% swoich statystyk, a cały zespół trafia do więzienia na 60 minut.</p>
 
             <?php if ($gangHeistMessage!==''): ?><p class="stat"><?= e($gangHeistMessage) ?></p><?php endif; ?>
             <?php if (!$gangHeist): ?>
