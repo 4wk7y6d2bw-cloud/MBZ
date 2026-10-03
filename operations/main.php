@@ -1370,10 +1370,10 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             </div>
             <h3>Członkowie</h3>
             <?php foreach ($gangMembers as $member): ?>
-              <div class="stat"><strong><?= e($member['login']) ?></strong> <span><?= number_format((int)($member['player_respect']??0),0,'.',' ') ?> respektu</span> <span><?= $member['role']==='boss'?'Lider':'Członek' ?></span></div>
+              <div class="stat"><strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$member['id'] ?>"><?= e($member['login']) ?></a></strong> <span><?= number_format((int)($member['player_respect']??0),0,'.',' ') ?> respektu</span> <span><?= $member['role']==='boss'?'Lider':'Członek' ?></span></div>
             <?php endforeach; ?>
             <?php foreach ($gangInvitedPlayers as $invited): ?>
-              <div class="stat"><strong><?= e($invited['login']) ?></strong> <span><?= number_format((int)($invited['player_respect']??0),0,'.',' ') ?> respektu</span> <span>Zaproszony</span></div>
+              <div class="stat"><strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$invited['id'] ?>"><?= e($invited['login']) ?></a></strong> <span><?= number_format((int)($invited['player_respect']??0),0,'.',' ') ?> respektu</span> <span>Zaproszony</span></div>
             <?php endforeach; ?>
           <?php endif; ?>
         <?php else: ?>
