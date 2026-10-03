@@ -434,10 +434,17 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                 }
             }
             $db->commit();
-            $stats = get_player_stats($db,(int)$user['id']);
+            // Odświeżenie HUD-u nie może nadpisywać wyniku już zakończonego rabunku.
+            try {
+                $stats = get_player_stats($db,(int)$user['id']);
+            } catch (Throwable $refreshError) {
+                error_log('Street robbery HUD refresh error: '.$refreshError->getMessage());
+            }
         } catch (Throwable $ex) {
-            if ($db->inTransaction()) $db->rollBack();
-            $streetMessage = 'Nie udało się wykonać rabunku. Spróbuj ponownie.';
+            if ($db->inTransaction()) {
+                $db->rollBack();
+                $streetMessage = 'Nie udało się wykonać rabunku. Spróbuj ponownie.';
+            }
             error_log('Street robbery error: '.$ex->getMessage());
         }
     }
