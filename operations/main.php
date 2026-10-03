@@ -53,6 +53,70 @@ if ($user && $db instanceof PDO) {
         redirect('./?page=profession');
     }
 }
+// Więzienie: realna blokada gry i indywidualny, ukryty próg łapówki.
+$jail = null;
+$jailMessage = '';
+if ($user && $db instanceof PDO) {
+    $db->exec("CREATE TABLE IF NOT EXISTS player_jail (
+        user_id INT NOT NULL PRIMARY KEY,
+        jailed_until DATETIME NOT NULL,
+        bribe_target BIGINT UNSIGNED NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $jailStmt=$db->prepare("SELECT user_id,jailed_until,bribe_target,TIMESTAMPDIFF(SECOND,NOW(),jailed_until) AS seconds_left FROM player_jail WHERE user_id=? AND jailed_until>NOW() LIMIT 1");
+    $jailStmt->execute([(int)$user['id']]);
+    $jail=$jailStmt->fetch() ?: null;
+    if (!$jail) {
+        $db->prepare("DELETE FROM player_jail WHERE user_id=? AND jailed_until<=NOW()")->execute([(int)$user['id']]);
+    }
+
+    if ($jail && $_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')==='jail_bribe') {
+        if (!csrf_valid(is_string($_POST['csrf_token']??null)?$_POST['csrf_token']:null)) {
+            $jailMessage='Sesja wygasła. Odśwież stronę.';
+        } else {
+            $amount=filter_var($_POST['amount']??null,FILTER_VALIDATE_INT);
+            if (!$amount || $amount<1) {
+                $jailMessage='Podaj kwotę łapówki.';
+            } else {
+                $db->beginTransaction();
+                try {
+                    $lock=$db->prepare("SELECT pj.bribe_target,ps.cash FROM player_jail pj JOIN player_stats ps ON ps.user_id=pj.user_id WHERE pj.user_id=? AND pj.jailed_until>NOW() FOR UPDATE");
+                    $lock->execute([(int)$user['id']]);
+                    $row=$lock->fetch();
+                    if (!$row) throw new RuntimeException('Twój wyrok już się skończył.');
+                    if ((int)$row['cash']<$amount) throw new RuntimeException('Nie masz tyle gotówki.');
+                    $db->prepare("UPDATE player_stats SET cash=cash-? WHERE user_id=?")->execute([$amount,(int)$user['id']]);
+                    $target=(int)$row['bribe_target'];
+                    if ($amount >= $target) {
+                        $db->prepare("DELETE FROM player_jail WHERE user_id=?")->execute([(int)$user['id']]);
+                        $over=$amount-$target;
+                        $jailMessage=$over > max(100,(int)floor($target*.25))
+                            ? 'Klawisz chowa pieniądze do kieszeni i uśmiecha się. Chyba trochę przepłaciłeś. Jesteś wolny.'
+                            : 'Klawisz chowa pieniądze. Cela otwarta — jesteś wolny.';
+                        $jail=null;
+                    } else {
+                        $missing=$target-$amount;
+                        if ($missing<100) $hint='Brakuje jeszcze kilkudziesięciu dolarów.';
+                        elseif ($missing<1000) $hint='Brakuje jeszcze paru stówek.';
+                        elseif ($missing<10000) $hint='Brakuje jeszcze paru tysięcy.';
+                        elseif ($missing<100000) $hint='Brakuje jeszcze kilkudziesięciu tysięcy.';
+                        elseif ($missing<1000000) $hint='Brakuje jeszcze paru setek tysięcy.';
+                        elseif ($missing<10000000) $hint='Brakuje jeszcze paru milionów.';
+                        else $hint='Brakuje jeszcze naprawdę grubej kasy.';
+                        $jailMessage='Klawisz zabiera pieniądze, ale nie otwiera celi. '.$hint;
+                    }
+                    $db->commit();
+                    $stats=get_player_stats($db,(int)$user['id']);
+                } catch(Throwable $e) {
+                    if($db->inTransaction())$db->rollBack();
+                    $jailMessage=$e->getMessage();
+                }
+            }
+        }
+    }
+}
+
 $locationNames = [
     'ulica' => 'Ulica', 'napad' => 'Napad', 'gang' => 'Gang',
     'sabotaz' => 'Sabotaż', 'nocne-zycie' => 'Nocne życie',
@@ -65,6 +129,12 @@ $locationNames = [
 $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
     ? $_GET['location'] : '';
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
+if ($jail) {
+    $selectedLocation = 'wiezienie';
+    if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')!=='jail_bribe') {
+        redirect('./?page=main&location=wiezienie');
+    }
+}
 $showRanking = ($_GET['view'] ?? '') === 'ranking';
 $showNotifications = ($_GET['view'] ?? '') === 'notifications';
 $rankingType = ($_GET['ranking'] ?? '') === 'gangs' ? 'gangs' : 'players';
@@ -1349,6 +1419,22 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <input type="hidden" name="action" value="street_taxi_robbery">
             <button type="submit" <?= !$stats || (int)$stats['energy'] < 10 ? 'disabled' : '' ?>>Napadnij na taksówkę</button>
           </form>
+        <?php elseif ($selectedLocation === 'wiezienie'): ?>
+          <?php if ($jailMessage!==''): ?><p class="stat"><?= e($jailMessage) ?></p><?php endif; ?>
+          <?php if ($jail): ?>
+            <h3>Odsiadka</h3>
+            <p class="muted">Do końca kary pozostało około <strong><?= max(1,(int)ceil((int)$jail['seconds_left']/60)) ?> min</strong>. W tym czasie nie możesz wykonywać innych akcji w grze.</p>
+            <h3>Przekup klawisza</h3>
+            <p class="muted">Podaj kwotę. Klawisz zabiera pieniądze przy każdej próbie. Jeśli dasz za mało, nie wypuści cię i poprzednia wpłata nie zalicza się do kolejnej próby.</p>
+            <form method="post" action="./?page=main&amp;location=wiezienie">
+              <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+              <input type="hidden" name="action" value="jail_bribe">
+              <input type="number" name="amount" min="1" step="1" required placeholder="Kwota łapówki">
+              <button type="submit">Daj łapówkę</button>
+            </form>
+          <?php else: ?>
+            <p class="muted">Nie jesteś obecnie w więzieniu.</p>
+          <?php endif; ?>
         <?php elseif ($selectedLocation === 'gang'): ?>
           <?php if ($gangMessage !== ''): ?><p class="stat"><?= e($gangMessage) ?></p><?php endif; ?>
           <?php if (!$gang): ?>
