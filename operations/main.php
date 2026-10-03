@@ -1547,7 +1547,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             </form>
             <h3>Napad na taksówkę</h3>
             <p class="muted">Koszt: 10% energii · Moc rabunku: 25–30 · Nagroda: 50–100 $ i +2–4 do każdej statystyki. Możesz próbować z dowolną mocą.</p>
-            <p class="muted">Twoja moc rabunku: <strong><?= $robberyPower ?></strong></p>
+
             <form method="post" action="./?page=main&amp;location=ulica">
               <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="street_taxi_robbery">
               <button type="submit" <?= !$stats || (int)$stats['energy'] < 10 ? 'disabled' : '' ?>>Napadnij na taksówkę</button>
