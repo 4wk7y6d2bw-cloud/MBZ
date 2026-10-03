@@ -256,14 +256,18 @@ if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
     $membershipStmt->execute([(int)$user['id']]);
     $gang = $membershipStmt->fetch() ?: null;
     if ($gang) {
-        $membersStmt = $db->prepare("SELECT u.id,u.login,gm.role,gm.joined_at
+        $membersStmt = $db->prepare("SELECT u.id,u.login,gm.role,gm.joined_at,
+            FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20) AS player_respect
             FROM gang_members gm JOIN users u ON u.id=gm.user_id
+            LEFT JOIN player_stats ps ON ps.user_id=gm.user_id
             WHERE gm.gang_id=? ORDER BY (gm.role='boss') DESC,gm.joined_at ASC,u.id ASC");
         $membersStmt->execute([(int)$gang['id']]);
         $gangMembers = $membersStmt->fetchAll();
 
-        $invitedStmt = $db->prepare("SELECT u.id,u.login,gi.created_at
+        $invitedStmt = $db->prepare("SELECT u.id,u.login,gi.created_at,
+            FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20) AS player_respect
             FROM gang_invites gi JOIN users u ON u.id=gi.invited_user_id
+            LEFT JOIN player_stats ps ON ps.user_id=gi.invited_user_id
             WHERE gi.gang_id=? AND gi.status='pending'
             ORDER BY gi.created_at ASC,gi.id ASC");
         $invitedStmt->execute([(int)$gang['id']]);
@@ -1366,10 +1370,10 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             </div>
             <h3>Członkowie</h3>
             <?php foreach ($gangMembers as $member): ?>
-              <div class="stat"><strong><?= e($member['login']) ?></strong> <span><?= $member['role']==='boss'?'Lider':'Członek' ?></span></div>
+              <div class="stat"><strong><?= e($member['login']) ?></strong> <span><?= number_format((int)($member['player_respect']??0),0,'.',' ') ?> respektu</span> <span><?= $member['role']==='boss'?'Lider':'Członek' ?></span></div>
             <?php endforeach; ?>
             <?php foreach ($gangInvitedPlayers as $invited): ?>
-              <div class="stat"><strong><?= e($invited['login']) ?></strong> <span>Zaproszony</span></div>
+              <div class="stat"><strong><?= e($invited['login']) ?></strong> <span><?= number_format((int)($invited['player_respect']??0),0,'.',' ') ?> respektu</span> <span>Zaproszony</span></div>
             <?php endforeach; ?>
           <?php endif; ?>
         <?php else: ?>
