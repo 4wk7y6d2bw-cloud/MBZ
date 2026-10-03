@@ -1513,7 +1513,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <h3>Napad na konwój</h3>
             <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50 u każdego uczestnika · nagroda: 500–700 $ i +5–8 do każdej statystyki.</p>
             <p class="muted">Jeśli choć jeden uczestnik ma moc poniżej 50, cały zespół trafia do więzienia na 60 minut.</p>
-            <p class="muted">Twoja moc rabunku: <strong><?= $robberyPower ?></strong></p>
+
             <?php if ($gangHeistMessage!==''): ?><p class="stat"><?= e($gangHeistMessage) ?></p><?php endif; ?>
             <?php if (!$gangHeist): ?>
               <form method="post" action="./?page=main&amp;location=ulica&amp;street_tab=gang">
