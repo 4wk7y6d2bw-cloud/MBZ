@@ -403,7 +403,9 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                         strength=strength+?,endurance=endurance+?,intelligence=intelligence+?,
                         charisma=charisma+?,cunning=cunning+? WHERE user_id=? AND energy>=?');
                     $rob->execute([$energyCost,$streetReward,$statGain,$statGain,$statGain,$statGain,$statGain,(int)$user['id'],$energyCost]);
-                    $firstDailyRobbery = award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day']);
+                    $firstDailyRobbery = ($gameState && isset($gameState['season'],$gameState['game_day']))
+                        ? award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day'])
+                        : false;
                     $streetMessage = 'Rabunek udany! +'.$streetReward.' $, +'.$statGain.' do każdej statystyki. -'.$energyCost.'% energii.'
                         . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
                 } else {
@@ -429,7 +431,8 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
             $stats = get_player_stats($db,(int)$user['id']);
         } catch (Throwable $ex) {
             if ($db->inTransaction()) $db->rollBack();
-            throw $ex;
+            $streetMessage = 'Nie udało się wykonać rabunku. Spróbuj ponownie.';
+            error_log('Street robbery error: '.$ex->getMessage());
         }
     }
 }
