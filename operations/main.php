@@ -79,7 +79,7 @@ $viewGang = null;
 $viewGangIsMember = false;
 $viewGangId = max(0, (int)($_GET['gang'] ?? 0));
 if ($showRanking && $rankingType === 'gangs' && $user && $db instanceof PDO) {
-    $rankingGangs = $db->query("SELECT g.id,g.name,COALESCE(SUM(ps.respect),0) AS respect,COUNT(gm.user_id) AS member_count
+    $rankingGangs = $db->query("SELECT g.id,g.name,COALESCE(SUM(FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20)),0) AS respect,COUNT(gm.user_id) AS member_count
         FROM gangs g
         LEFT JOIN gang_members gm ON gm.gang_id=g.id
         LEFT JOIN player_stats ps ON ps.user_id=gm.user_id
@@ -155,7 +155,8 @@ $gangMessageType = 'ok';
 $gang = null;
 $gangMembers = [];
 if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
-    $membershipStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,g.respect,gm.role
+    $membershipStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,gm.role,
+        COALESCE((SELECT SUM(FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20)) FROM gang_members gm2 JOIN player_stats ps ON ps.user_id=gm2.user_id WHERE gm2.gang_id=g.id),0) AS respect
         FROM gang_members gm JOIN gangs g ON g.id=gm.gang_id WHERE gm.user_id=? LIMIT 1");
     $membershipStmt->execute([(int)$user['id']]);
     $gang = $membershipStmt->fetch() ?: null;
