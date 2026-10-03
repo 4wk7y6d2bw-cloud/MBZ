@@ -413,6 +413,16 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                         cunning=GREATEST(1,FLOOR(cunning*0.98)) WHERE user_id=? AND energy>=?');
                     $fail->execute([$energyCost,(int)$user['id'],$energyCost]);
                     $streetMessage = 'Rabunek nieudany! -'.$energyCost.'% energii i -2% każdej statystyki.';
+                    if ($taxi && random_int(1,100) <= 10) {
+                        $respectStmt=$db->prepare("SELECT FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/20) FROM player_stats WHERE user_id=?");
+                        $respectStmt->execute([(int)$user['id']]);
+                        $respect=max(1,(int)$respectStmt->fetchColumn());
+                        $base=max(100,5*$respect);
+                        $target=random_int(max(1,(int)floor($base*.70)),max(2,(int)ceil($base*1.40)));
+                        $db->prepare("INSERT INTO player_jail(user_id,jailed_until,bribe_target) VALUES (?,DATE_ADD(NOW(),INTERVAL 60 MINUTE),?) ON DUPLICATE KEY UPDATE jailed_until=VALUES(jailed_until),bribe_target=VALUES(bribe_target),created_at=NOW()")
+                           ->execute([(int)$user['id'],$target]);
+                        $streetMessage .= ' Policja cię złapała — trafiasz do więzienia na 60 minut.';
+                    }
                 }
             }
             $db->commit();
