@@ -465,7 +465,7 @@ if ($user && $db instanceof PDO && $selectedLocation==='ulica' && $streetGang &&
                 $failed=false;
                 foreach($players as $pl) {
                     $power=(int)floor((int)$pl['strength']*.35+(int)$pl['endurance']*.20+(int)$pl['intelligence']*.15+(int)$pl['charisma']*.10+(int)$pl['cunning']*.20);
-                    if($power<50)$failed=true;
+                    if($power<random_int(50,60))$failed=true;
                     $db->prepare("UPDATE gang_heist_participants SET robbery_power=? WHERE heist_id=? AND user_id=?")->execute([$power,(int)$lockedHeist['id'],(int)$pl['user_id']]);
                     $db->prepare("UPDATE player_stats SET energy=energy-10 WHERE user_id=?")->execute([(int)$pl['user_id']]);
                 }
@@ -1511,8 +1511,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           </div>
           <?php if ($streetTab==='gang' && $streetGang): ?>
             <h3>Napad na konwój</h3>
-            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50 u każdego uczestnika · nagroda: 500–700 $ i +5–8 do każdej statystyki.</p>
-            <p class="muted">Jeśli choć jeden uczestnik ma moc poniżej 50, cały zespół trafia do więzienia na 60 minut.</p>
+            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i +5–8 do każdej statystyki.</p>
+            <p class="muted">Każdy uczestnik jest sprawdzany względem losowego progu 50–60. Jeśli choć jeden go nie spełni, cały zespół trafia do więzienia na 60 minut.</p>
 
             <?php if ($gangHeistMessage!==''): ?><p class="stat"><?= e($gangHeistMessage) ?></p><?php endif; ?>
             <?php if (!$gangHeist): ?>
