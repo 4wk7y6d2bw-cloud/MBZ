@@ -79,7 +79,7 @@ $viewGang = null;
 $viewGangIsMember = false;
 $viewGangId = max(0, (int)($_GET['gang'] ?? 0));
 if ($showRanking && $rankingType === 'gangs' && $user && $db instanceof PDO) {
-    $rankingGangs = $db->query("SELECT g.id,g.name,COALESCE(SUM(ps.public_respect),0) AS respect,COUNT(gm.user_id) AS member_count
+    $rankingGangs = $db->query("SELECT g.id,g.name,COALESCE(SUM(ps.respect),0) AS respect,COUNT(gm.user_id) AS member_count
         FROM gangs g
         LEFT JOIN gang_members gm ON gm.gang_id=g.id
         LEFT JOIN player_stats ps ON ps.user_id=gm.user_id
