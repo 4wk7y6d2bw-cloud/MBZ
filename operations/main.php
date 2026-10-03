@@ -403,10 +403,16 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                         strength=strength+?,endurance=endurance+?,intelligence=intelligence+?,
                         charisma=charisma+?,cunning=cunning+? WHERE user_id=? AND energy>=?');
                     $rob->execute([$energyCost,$streetReward,$statGain,$statGain,$statGain,$statGain,$statGain,(int)$user['id'],$energyCost]);
-                    $firstDailyRobbery = ($gameState && isset($gameState['season'],$gameState['game_day']))
-                        ? award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day'])
-                        : false;
-                    $streetMessage = 'Rabunek udany! +'.$streetReward.' $, +'.$statGain.' do każdej statystyki. -'.$energyCost.'% energii.'
+                    $firstDailyRobbery = false;
+                    if ($gameState && isset($gameState['season'],$gameState['game_day'])) {
+                        try {
+                            $firstDailyRobbery = award_first_daily_robbery_credit($db, (int)$user['id'], (int)$gameState['season'], (int)$gameState['game_day']);
+                        } catch (Throwable $rewardError) {
+                            // Dodatkowa nagroda nie może cofnąć ani ukryć udanego rabunku.
+                            error_log('Daily robbery reward error: '.$rewardError->getMessage());
+                        }
+                    }
+                    $streetMessage = 'Rabunek udany! Otrzymujesz +'.$streetReward.' $, +'.$statGain.' siły, +'.$statGain.' wytrzymałości, +'.$statGain.' inteligencji, +'.$statGain.' charyzmy i +'.$statGain.' sprytu. Koszt: '.$energyCost.'% energii.'
                         . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
                 } else {
                     $fail = $db->prepare('UPDATE player_stats SET energy=energy-?,
