@@ -202,6 +202,7 @@ $gangMessage = '';
 $gangMessageType = 'ok';
 $gang = null;
 $gangMembers = [];
+$gangInvitedPlayers = [];
 if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
     $membershipStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,gm.role,
         COALESCE((SELECT SUM(FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20)) FROM gang_members gm2 JOIN player_stats ps ON ps.user_id=gm2.user_id WHERE gm2.gang_id=g.id),0) AS respect
@@ -260,6 +261,13 @@ if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
             WHERE gm.gang_id=? ORDER BY (gm.role='boss') DESC,gm.joined_at ASC,u.id ASC");
         $membersStmt->execute([(int)$gang['id']]);
         $gangMembers = $membersStmt->fetchAll();
+
+        $invitedStmt = $db->prepare("SELECT u.id,u.login,gi.created_at
+            FROM gang_invites gi JOIN users u ON u.id=gi.invited_user_id
+            WHERE gi.gang_id=? AND gi.status='pending'
+            ORDER BY gi.created_at ASC,gi.id ASC");
+        $invitedStmt->execute([(int)$gang['id']]);
+        $gangInvitedPlayers = $invitedStmt->fetchAll();
     }
     if (isset($_GET['created']) && $gang) $gangMessage = 'Gang został utworzony.';
 }
@@ -1359,6 +1367,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <h3>Członkowie</h3>
             <?php foreach ($gangMembers as $member): ?>
               <div class="stat"><strong><?= e($member['login']) ?></strong> <span><?= $member['role']==='boss'?'Lider':'Członek' ?></span></div>
+            <?php endforeach; ?>
+            <?php foreach ($gangInvitedPlayers as $invited): ?>
+              <div class="stat"><strong><?= e($invited['login']) ?></strong> <span>Zaproszony</span></div>
             <?php endforeach; ?>
           <?php endif; ?>
         <?php else: ?>
