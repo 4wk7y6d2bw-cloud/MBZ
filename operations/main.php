@@ -123,6 +123,73 @@ if ($user && $db instanceof PDO) {
     $pendingContactsStmt->execute([(int)$user['id'],(int)$user['id'],(int)$user['id']]);
     $pendingContactCount=(int)$pendingContactsStmt->fetchColumn();
 }
+
+// Gang działa jako zwykła lokacja w głównym layoucie gry.
+$gangMessage = '';
+$gangMessageType = 'ok';
+$gang = null;
+$gangMembers = [];
+if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
+    $membershipStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,g.respect,gm.role
+        FROM gang_members gm JOIN gangs g ON g.id=gm.gang_id WHERE gm.user_id=? LIMIT 1");
+    $membershipStmt->execute([(int)$user['id']]);
+    $gang = $membershipStmt->fetch() ?: null;
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_gang') {
+        if ($activeTravel) {
+            $gangMessage = 'Nie możesz utworzyć gangu podczas podróży.';
+            $gangMessageType = 'error';
+        } elseif (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+            $gangMessage = 'Sesja formularza wygasła. Odśwież stronę.';
+            $gangMessageType = 'error';
+        } elseif ($gang) {
+            $gangMessage = 'Należysz już do gangu.';
+            $gangMessageType = 'error';
+        } else {
+            $name = trim(is_string($_POST['name'] ?? null) ? $_POST['name'] : '');
+            if (mb_strlen($name) < 3 || mb_strlen($name) > 20) {
+                $gangMessage = 'Nazwa gangu musi mieć od 3 do 20 znaków.';
+                $gangMessageType = 'error';
+            } elseif (!preg_match('/^[\\p{L}\\p{N} ._-]+$/u', $name)) {
+                $gangMessage = 'Nazwa zawiera niedozwolone znaki.';
+                $gangMessageType = 'error';
+            } else {
+                try {
+                    $db->beginTransaction();
+                    $checkMember = $db->prepare('SELECT gang_id FROM gang_members WHERE user_id=? FOR UPDATE');
+                    $checkMember->execute([(int)$user['id']]);
+                    if ($checkMember->fetchColumn()) throw new RuntimeException('Należysz już do gangu.');
+                    $duplicate = $db->prepare('SELECT id FROM gangs WHERE name=? LIMIT 1');
+                    $duplicate->execute([$name]);
+                    if ($duplicate->fetchColumn()) throw new RuntimeException('Gang o takiej nazwie już istnieje.');
+                    $create = $db->prepare('INSERT INTO gangs(name,owner_id) VALUES(?,?)');
+                    $create->execute([$name,(int)$user['id']]);
+                    $gangId = (int)$db->lastInsertId();
+                    $join = $db->prepare("INSERT INTO gang_members(gang_id,user_id,role) VALUES(?,?,'boss')");
+                    $join->execute([$gangId,(int)$user['id']]);
+                    $db->commit();
+                    redirect('./?page=main&location=gang&created=1');
+                } catch (Throwable $e) {
+                    if ($db->inTransaction()) $db->rollBack();
+                    $gangMessage = $e instanceof RuntimeException ? $e->getMessage() : 'Nie udało się utworzyć gangu.';
+                    $gangMessageType = 'error';
+                }
+            }
+        }
+    }
+
+    $membershipStmt->execute([(int)$user['id']]);
+    $gang = $membershipStmt->fetch() ?: null;
+    if ($gang) {
+        $membersStmt = $db->prepare("SELECT u.id,u.login,gm.role,gm.joined_at
+            FROM gang_members gm JOIN users u ON u.id=gm.user_id
+            WHERE gm.gang_id=? ORDER BY (gm.role='boss') DESC,gm.joined_at ASC,u.id ASC");
+        $membersStmt->execute([(int)$gang['id']]);
+        $gangMembers = $membersStmt->fetchAll();
+    }
+    if (isset($_GET['created']) && $gang) $gangMessage = 'Gang został utworzony.';
+}
+
 require_once __DIR__ . '/../base/robbery_rewards.php';
 $streetMessage = '';
 $streetReward = null;
@@ -1154,6 +1221,30 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <input type="hidden" name="action" value="street_taxi_robbery">
             <button type="submit" <?= !$stats || (int)$stats['energy'] < 10 ? 'disabled' : '' ?>>Napadnij na taksówkę</button>
           </form>
+        <?php elseif ($selectedLocation === 'gang'): ?>
+          <?php if ($gangMessage !== ''): ?><p class="stat"><?= e($gangMessage) ?></p><?php endif; ?>
+          <?php if (!$gang): ?>
+            <p class="muted">Nie należysz jeszcze do żadnego gangu. Założenie własnego gangu jest darmowe.</p>
+            <form method="post" action="./?page=main&amp;location=gang">
+              <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+              <input type="hidden" name="action" value="create_gang">
+              <label for="gang-name">Nazwa gangu</label>
+              <input id="gang-name" name="name" type="text" minlength="3" maxlength="20" required autocomplete="off" placeholder="np. Warszawska Mafia">
+              <p class="muted">Nazwa musi mieć od 3 do 20 znaków i być unikalna.</p>
+              <button type="submit">Utwórz gang za darmo</button>
+            </form>
+          <?php else: ?>
+            <h3><?= e($gang['name']) ?></h3>
+            <div class="stats">
+              <div class="stat"><span>Twoja ranga</span><strong><?= $gang['role']==='boss'?'Szef':'Członek' ?></strong></div>
+              <div class="stat"><span>Respekt gangu</span><strong><?= number_format((int)$gang['respect'],0,'.',' ') ?></strong></div>
+              <div class="stat"><span>Liczba członków</span><strong><?= count($gangMembers) ?></strong></div>
+            </div>
+            <h3>Członkowie</h3>
+            <?php foreach ($gangMembers as $member): ?>
+              <div class="stat"><strong><?= e($member['login']) ?></strong> <span><?= $member['role']==='boss'?'Szef':'Członek' ?></span></div>
+            <?php endforeach; ?>
+          <?php endif; ?>
         <?php else: ?>
           <p class="muted">Tutaj pojawią się informacje i dostępne akcje tej lokacji.</p>
         <?php endif; ?>
