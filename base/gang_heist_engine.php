@@ -100,18 +100,110 @@ function gang_heist_cleanup_orphans(PDO $db): void
  * deleted immediately, not left for periodic orphan cleanup. No UI for
  * deleting gangs is exposed by this helper.
  */
-function gang_heist_delete_gang(PDO $db, int $gangId, int $leaderId): void
+/**
+ * A member may leave the gang. Only the owner/leader may kick another member.
+ * Active heist acceptances are removed atomically with membership. If the
+ * pending heist creator departs, the pending heist is cancelled and cleaned up.
+ * Past successful heist history is not erased when someone merely leaves.
+ */
+function gang_heist_remove_member(PDO $db, int $actorId, int $targetId, bool $kick): string
 {
-    if ($gangId <= 0 || $leaderId <= 0) {
+    if ($actorId<=0 || $targetId<=0) throw new InvalidArgumentException('Nieprawidłowy gracz.');
+    if ($kick && $actorId===$targetId) {
+        throw new RuntimeException('Lider nie może wyrzucić samego siebie. Aby odejść, rozwiąż gang.');
+    }
+    if (!$kick && $actorId!==$targetId) {
+        throw new RuntimeException('Możesz opuścić tylko własny gang.');
+    }
+
+    // Locate the gang before taking the lock, then revalidate under the lock.
+    $find=$db->prepare('SELECT gang_id FROM gang_members WHERE user_id=? LIMIT 1');
+    $find->execute([$actorId]);
+    $gangId=(int)($find->fetchColumn() ?: 0);
+    if ($gangId<=0) throw new RuntimeException('Nie należysz już do żadnego gangu.');
+
+    $db->beginTransaction();
+    try {
+        // Same root gang lock as automatic heist start/accept and gang deletion.
+        $gangLock=$db->prepare('SELECT id,owner_id,name FROM gangs WHERE id=? FOR UPDATE');
+        $gangLock->execute([$gangId]);
+        $gang=$gangLock->fetch(PDO::FETCH_ASSOC);
+        if (!$gang) throw new RuntimeException('Gang nie istnieje.');
+
+        $membership=$db->prepare('SELECT user_id,role FROM gang_members WHERE gang_id=? AND user_id=? FOR UPDATE');
+        $membership->execute([$gangId,$actorId]);
+        $actor=$membership->fetch(PDO::FETCH_ASSOC);
+        if (!$actor) throw new RuntimeException('Nie należysz już do tego gangu.');
+
+        if ($kick) {
+            if ((int)$gang['owner_id']!==$actorId || $actor['role']!=='boss') {
+                throw new RuntimeException('Tylko lider może wyrzucać członków.');
+            }
+        } elseif ((int)$gang['owner_id']===$actorId || $actor['role']==='boss') {
+            throw new RuntimeException('Lider nie może opuścić gangu. Może go rozwiązać.');
+        }
+
+        $member=$db->prepare('SELECT gm.user_id,gm.role,u.login FROM gang_members gm
+            JOIN users u ON u.id=gm.user_id
+            WHERE gm.gang_id=? AND gm.user_id=? FOR UPDATE');
+        $member->execute([$gangId,$targetId]);
+        $target=$member->fetch(PDO::FETCH_ASSOC);
+        if (!$target) throw new RuntimeException('Ten gracz nie należy już do twojego gangu.');
+        if ((int)$gang['owner_id']===$targetId || $target['role']==='boss') {
+            throw new RuntimeException('Nie można wyrzucić lidera gangu.');
+        }
+
+        // If the creator leaves, the pending raid must not remain under the
+        // control of a person who is no longer in this gang.
+        $db->prepare('DELETE e FROM gang_heist_events e JOIN gang_heists h ON h.id=e.heist_id
+            WHERE h.gang_id=? AND h.status=\'recruiting\' AND h.created_by=?')
+           ->execute([$gangId,$targetId]);
+        $db->prepare('DELETE p FROM gang_heist_participants p JOIN gang_heists h ON h.id=p.heist_id
+            WHERE h.gang_id=? AND h.status=\'recruiting\' AND h.created_by=?')
+           ->execute([$gangId,$targetId]);
+        $db->prepare("DELETE FROM gang_heists
+            WHERE gang_id=? AND status='recruiting' AND created_by=?")
+           ->execute([$gangId,$targetId]);
+
+        // Any other awaiting raid loses this player's acceptance.
+        $db->prepare('DELETE p FROM gang_heist_participants p JOIN gang_heists h ON h.id=p.heist_id
+            WHERE h.gang_id=? AND h.status=\'recruiting\' AND p.user_id=?')
+           ->execute([$gangId,$targetId]);
+        $del=$db->prepare('DELETE FROM gang_members WHERE gang_id=? AND user_id=? AND role=\'member\'');
+        $del->execute([$gangId,$targetId]);
+        if ($del->rowCount()!==1) throw new RuntimeException('Nie można usunąć członka gangu.');
+
+        $db->commit();
+        return $kick
+            ? 'Gracz '.$target['login'].' został wyrzucony z gangu.'
+            : 'Opuściłeś gang '.$gang['name'].'.';
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+}
+
+/** Delete the gang and all subordinate records as one transaction. */
+function gang_heist_delete_gang(PDO $db, int $gangId, int $leaderId, string $confirmation): void
+{
+    if ($gangId<=0 || $leaderId<=0) {
         throw new InvalidArgumentException('Nieprawidłowy gang lub lider.');
     }
     $db->beginTransaction();
     try {
-        $gang=$db->prepare("SELECT id FROM gangs WHERE id=? AND owner_id=? FOR UPDATE");
+        $gang=$db->prepare("SELECT id,name FROM gangs WHERE id=? AND owner_id=? FOR UPDATE");
         $gang->execute([$gangId,$leaderId]);
-        if (!$gang->fetchColumn()) {
+        $row=$gang->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
             throw new RuntimeException('Tylko lider może usunąć swój istniejący gang.');
         }
+        if (!hash_equals((string)$row['name'],$confirmation)) {
+            throw new RuntimeException('Wpisz dokładną nazwę gangu, aby potwierdzić usunięcie.');
+        }
+        $owner=$db->prepare("SELECT 1 FROM gang_members
+            WHERE gang_id=? AND user_id=? AND role='boss' FOR UPDATE");
+        $owner->execute([$gangId,$leaderId]);
+        if (!$owner->fetchColumn()) throw new RuntimeException('Nie masz uprawnień lidera.');
 
         $db->prepare('DELETE FROM gang_heist_events WHERE gang_id=?')->execute([$gangId]);
         $db->prepare('DELETE p FROM gang_heist_participants p
