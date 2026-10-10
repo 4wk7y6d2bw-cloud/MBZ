@@ -395,6 +395,10 @@ if ($contactGangLeaderId && $db instanceof PDO) {
 // Gang działa jako zwykła lokacja w głównym layoucie gry.
 $gangMessage = '';
 $gangMessageType = 'ok';
+if ($selectedLocation === 'gang' && isset($_SESSION['mbz_gang_management_flash'])) {
+    $gangMessage = (string) $_SESSION['mbz_gang_management_flash'];
+    unset($_SESSION['mbz_gang_management_flash']);
+}
 $gang = null;
 $gangMembers = [];
 $gangInvitedPlayers = [];
@@ -404,6 +408,52 @@ if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
         FROM gang_members gm JOIN gangs g ON g.id=gm.gang_id WHERE gm.user_id=? LIMIT 1");
     $membershipStmt->execute([(int)$user['id']]);
     $gang = $membershipStmt->fetch() ?: null;
+
+    // Gang management: members can leave, but only the leader can remove
+    // another member or disband the gang. All mutations are checked in the
+    // database transaction, never trusted from visible UI controls.
+    $gangManageAction=is_string($_POST['action'] ?? null) ? $_POST['action'] : '';
+    if ($_SERVER['REQUEST_METHOD']==='POST'
+        && in_array($gangManageAction,['gang_leave','gang_kick','gang_delete'],true)) {
+        if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+            $gangMessage = 'Sesja formularza wygasła. Odśwież stronę.';
+            $gangMessageType = 'error';
+        } elseif ($activeTravel) {
+            $gangMessage = 'Nie możesz zarządzać gangiem podczas podróży.';
+            $gangMessageType = 'error';
+        } elseif (!$gang) {
+            $gangMessage = 'Nie należysz do żadnego gangu.';
+            $gangMessageType = 'error';
+        } else {
+            try {
+                require_once __DIR__ . '/../base/gang_heist_engine.php';
+                // CREATE TABLE must never execute in a running MySQL transaction.
+                gang_heist_install($db);
+                $myId=(int)$user['id'];
+                if ($gangManageAction==='gang_leave') {
+                    $confirmation=trim(is_string($_POST['confirm_leave'] ?? null)?$_POST['confirm_leave']:'');
+                    if ($confirmation!=='yes') throw new RuntimeException('Potwierdź opuszczenie gangu.');
+                    $message=gang_heist_remove_member($db,$myId,$myId,false);
+                } elseif ($gangManageAction==='gang_kick') {
+                    $target=filter_var($_POST['target'] ?? null,FILTER_VALIDATE_INT);
+                    if (!$target || $target<1) throw new RuntimeException('Nieprawidłowy członek gangu.');
+                    $message=gang_heist_remove_member($db,$myId,(int)$target,true);
+                } else {
+                    $name=is_string($_POST['confirm_name'] ?? null)?$_POST['confirm_name']:'';
+                    gang_heist_delete_gang($db,(int)$gang['id'],$myId,$name);
+                    $message='Gang został rozwiązany. Członkowie, zaproszenia i skoki zostały usunięte.';
+                }
+                $_SESSION['mbz_gang_management_flash']=$message;
+                redirect('./?page=main&location=gang');
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) $db->rollBack();
+                $gangMessage=$e instanceof RuntimeException
+                    ? $e->getMessage() : 'Nie udało się wykonać tej akcji.';
+                $gangMessageType='error';
+                if (!($e instanceof RuntimeException)) error_log('Gang management error: '.$e->getMessage());
+            }
+        }
+    }
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_gang') {
         if ($activeTravel) {
@@ -1690,12 +1740,54 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
               <div class="stat"><span>Liczba członków</span><strong><?= count($gangMembers) ?>/20</strong></div>
             </div>
             <h3>Członkowie</h3>
+            <?php $isGangLeader=$gang['role']==='boss' && (int)$gang['owner_id']===(int)$user['id']; ?>
             <?php foreach ($gangMembers as $member): ?>
-              <div class="stat"><strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$member['id'] ?>"><?= e($member['login']) ?></a></strong> <span><?= number_format((int)($member['player_respect']??0),0,'.',' ') ?> respektu</span> <span><?= $member['role']==='boss'?'Lider':'Członek' ?></span></div>
+              <div class="stat" style="margin-bottom:10px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                  <div>
+                    <strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$member['id'] ?>"><?= e($member['login']) ?></a></strong>
+                    <span><?= number_format((int)($member['player_respect']??0),0,'.',' ') ?> respektu</span>
+                    <span><?= $member['role']==='boss'?'Lider':'Członek' ?></span>
+                  </div>
+                  <?php if ($isGangLeader && $member['role']!=='boss' && (int)$member['id']!==(int)$user['id']): ?>
+                    <form method="post" action="./?page=main&amp;location=gang"
+                      onsubmit="return confirm('Czy na pewno wyrzucić tego gracza z gangu?');">
+                      <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                      <input type="hidden" name="action" value="gang_kick">
+                      <input type="hidden" name="target" value="<?= (int)$member['id'] ?>">
+                      <button class="secondary" type="submit">Wyrzuć</button>
+                    </form>
+                  <?php endif; ?>
+                </div>
+              </div>
             <?php endforeach; ?>
             <?php foreach ($gangInvitedPlayers as $invited): ?>
-              <div class="stat"><strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$invited['id'] ?>"><?= e($invited['login']) ?></a></strong> <span><?= number_format((int)($invited['player_respect']??0),0,'.',' ') ?> respektu</span> <span>Zaproszony</span></div>
+              <div class="stat" style="margin-bottom:10px"><strong><a href="./?page=main&amp;view=profile&amp;player=<?= (int)$invited['id'] ?>"><?= e($invited['login']) ?></a></strong> <span><?= number_format((int)($invited['player_respect']??0),0,'.',' ') ?> respektu</span> <span>Zaproszony</span></div>
             <?php endforeach; ?>
+            <?php if (!$isGangLeader): ?>
+              <h3>Opuść gang</h3>
+              <p class="muted">Po wyjściu przestaniesz być członkiem gangu. Jeśli zaakceptowałeś oczekujący skok, twój udział zostanie cofnięty.</p>
+              <form method="post" action="./?page=main&amp;location=gang"
+                onsubmit="return confirm('Na pewno chcesz opuścić gang?');">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="action" value="gang_leave">
+                <input type="hidden" name="confirm_leave" value="yes">
+                <button class="secondary" type="submit">Opuść gang</button>
+              </form>
+            <?php else: ?>
+              <details style="margin-top:28px;padding:16px;border:1px solid #703737;border-radius:10px">
+                <summary style="cursor:pointer;font-weight:700">Rozwiąż gang</summary>
+                <p class="muted">Nieodwracalne: usunie wszystkich członków, oczekujące zaproszenia, skoki gangu, ich uczestników i wyniki. Jeśli skok nie został wykonany, zostanie anulowany bez nagród i kar.</p>
+                <form method="post" action="./?page=main&amp;location=gang"
+                  onsubmit="return confirm('Ostateczne potwierdzenie: usunąć cały gang i jego skoki?');">
+                  <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                  <input type="hidden" name="action" value="gang_delete">
+                  <label for="gang-delete-name">Wpisz dokładną nazwę gangu, aby potwierdzić: <strong><?= e($gang['name']) ?></strong></label>
+                  <input id="gang-delete-name" name="confirm_name" type="text" maxlength="20" required autocomplete="off" placeholder="Nazwa gangu">
+                  <button type="submit">Usuń gang na stałe</button>
+                </form>
+              </details>
+            <?php endif; ?>
           <?php endif; ?>
         <?php else: ?>
           <p class="muted">Tutaj pojawią się informacje i dostępne akcje tej lokacji.</p>
