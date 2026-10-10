@@ -39,7 +39,11 @@ try {
             ? ($stats[$field] ?? null) : (int) ($stats[$field] ?? 0);
     }
     // Keep the incoming gang-invitation badge live while the player is online.
-    $inviteCountStmt=$db->prepare("SELECT COUNT(*) FROM gang_invites WHERE invited_user_id=? AND status='pending'");
+    $inviteCountStmt=$db->prepare("SELECT COUNT(*)
+        FROM gang_invites gi
+        JOIN gangs g ON g.id=gi.gang_id
+        JOIN users u ON u.id=gi.invited_by
+        WHERE gi.invited_user_id=? AND gi.status='pending'");
     $inviteCountStmt->execute([$userId]);
     $pendingGangInvites=(int)$inviteCountStmt->fetchColumn();
     $version = hash('sha256', json_encode([$player, $rank, $game['game_day'], $game['season'], $game['is_break'], $game['next_ranking_update'], $pendingGangInvites]));
