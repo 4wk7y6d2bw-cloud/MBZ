@@ -310,8 +310,20 @@ if ($user && $db instanceof PDO) {
             }
         }
     }
-    $pendingInvitesQuery=$db->prepare("SELECT COUNT(*) FROM gang_invites
-        WHERE invited_user_id=? AND status='pending'");
+    // Only invitations to existing gangs can appear as pending notifications.
+    // If a gang was deleted without a database cascade, remove stale invitations
+    // when the player opens Notifications. No SQL migration is needed.
+    if ($showNotifications) {
+        $orphanedInvites=$db->prepare("DELETE gi FROM gang_invites gi
+            LEFT JOIN gangs g ON g.id=gi.gang_id
+            WHERE gi.invited_user_id=? AND gi.status='pending' AND g.id IS NULL");
+        $orphanedInvites->execute([$me]);
+    }
+    $pendingInvitesQuery=$db->prepare("SELECT COUNT(*)
+        FROM gang_invites gi
+        JOIN gangs g ON g.id=gi.gang_id
+        JOIN users u ON u.id=gi.invited_by
+        WHERE gi.invited_user_id=? AND gi.status='pending'");
     $pendingInvitesQuery->execute([$me]);
     $pendingGangInviteCount=(int)$pendingInvitesQuery->fetchColumn();
 
