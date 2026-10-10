@@ -173,10 +173,33 @@ function gang_heist_remove_member(PDO $db, int $actorId, int $targetId, bool $ki
         $del->execute([$gangId,$targetId]);
         if ($del->rowCount()!==1) throw new RuntimeException('Nie można usunąć członka gangu.');
 
+        // A pending heist may have been valid before this departure but now
+        // require more members than the gang actually has. Cancel it without
+        // awarding rewards or applying penalties; don't leave unusable raids.
+        $memberCountStmt=$db->prepare('SELECT COUNT(*) FROM gang_members WHERE gang_id=?');
+        $memberCountStmt->execute([$gangId]);
+        $remainingMembers=(int)$memberCountStmt->fetchColumn();
+        $pendingStmt=$db->prepare("SELECT id,heist_type FROM gang_heists
+            WHERE gang_id=? AND status='recruiting' FOR UPDATE");
+        $pendingStmt->execute([$gangId]);
+        $cancelled=false;
+        foreach ($pendingStmt->fetchAll(PDO::FETCH_ASSOC) as $waitingHeist) {
+            if ($remainingMembers>=gang_heist_required_acceptances((string)$waitingHeist['heist_type'])) {
+                continue;
+            }
+            $pendingId=(int)$waitingHeist['id'];
+            $db->prepare('DELETE FROM gang_heist_events WHERE heist_id=?')->execute([$pendingId]);
+            $db->prepare('DELETE FROM gang_heist_participants WHERE heist_id=?')->execute([$pendingId]);
+            $db->prepare('DELETE FROM gang_heists WHERE id=? AND gang_id=? AND status=\'recruiting\'')
+               ->execute([$pendingId,$gangId]);
+            $cancelled=true;
+        }
+
         $db->commit();
-        return $kick
+        $message=$kick
             ? 'Gracz '.$target['login'].' został wyrzucony z gangu.'
             : 'Opuściłeś gang '.$gang['name'].'.';
+        return $message.($cancelled ? ' Niedokończony skok został anulowany z powodu zbyt małej liczby członków.' : '');
     } catch (Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
         throw $e;
