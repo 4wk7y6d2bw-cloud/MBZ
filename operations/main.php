@@ -411,7 +411,7 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                 $success = random_int(1,100) <= $successChance;
                 if ($success) {
                     $streetReward = profession_robbery_cash($robberyProfession, $taxi ? random_int(50,100) : random_int(10,20));
-                    $statGain = $taxi ? random_int(2,4) : 2;
+                    $statGain = $taxi ? 4 : 2;
                     $statRewards = profession_robbery_stat_rewards($db,(int)$user['id'],(int)($gameState['season']??0),$robberyProfession,$statGain);
                     $awardedStats = $statRewards['points'];
                     $rob = $db->prepare('UPDATE player_stats SET energy=energy-?,cash=cash+?,
@@ -432,7 +432,7 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                         . profession_robbery_stat_notice($robberyProfession,$statRewards)
                         . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
                 } else {
-                    $failedPool = $taxi ? random_int(10,20) : 10;
+                    $failedPool = $taxi ? 20 : 10;
                     $lossResult = apply_robbery_stat_loss($db,(int)$user['id'],(int)($gameState['season']??0),$failedPool);
                     $db->prepare('UPDATE player_stats SET energy=energy-? WHERE user_id=? AND energy>=?')
                        ->execute([$energyCost,(int)$user['id'],$energyCost]);
@@ -513,7 +513,7 @@ if ($user && $db instanceof PDO && $selectedLocation==='ulica' && $streetGang &&
                 if($failed) {
                     $myFailureLoss = null;
                     foreach($players as $pl) {
-                        $failedPool = random_int(25,40);
+                        $failedPool = 40;
                         $lossResult = apply_robbery_stat_loss($db,(int)$pl['user_id'],(int)($gameState['season']??0),$failedPool);
                         if ((int)$pl['user_id'] === (int)$user['id']) $myFailureLoss = $lossResult;
                         $respectStmt=$db->prepare("SELECT FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/20) FROM player_stats WHERE user_id=?");
@@ -534,7 +534,7 @@ if ($user && $db instanceof PDO && $selectedLocation==='ulica' && $streetGang &&
                     foreach($players as $pl) {
                         $profession = (string)$pl['profession'];
                         $cash = profession_robbery_cash($profession, random_int(500,700));
-                        $gain = random_int(5,8);
+                        $gain = 8;
                         $statRewards = profession_robbery_stat_rewards($db,(int)$pl['user_id'],(int)($gameState['season']??0),$profession,$gain);
                         $awarded = $statRewards['points'];
                         $db->prepare("UPDATE player_stats SET cash=cash+?,strength=strength+?,endurance=endurance+?,intelligence=intelligence+?,charisma=charisma+?,cunning=cunning+? WHERE user_id=?")
@@ -1574,8 +1574,8 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <?php endif; ?>
           <?php if ($streetTab==='gang' && $streetGang): ?>
             <h3>Napad na konwój</h3>
-            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i pula 25–40 pkt statystyk na gracza, dzielona według profesji (minimum +1 do każdej).</p>
-            <p class="muted">Każdy uczestnik jest sprawdzany względem losowego progu 50–60. Przy niepowodzeniu każdy traci 10% losowej puli 25–40 pkt, rozłożone równomiernie na statystyki niezależnie od profesji, i trafia do więzienia na 60 minut.</p>
+            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i stała pula 40 pkt statystyk na gracza, dzielona według profesji (minimum +1 do każdej).</p>
+            <p class="muted">Każdy uczestnik jest sprawdzany względem losowego progu 50–60. Przy niepowodzeniu każdy traci 4 pkt (10% puli), rozłożone równomiernie na statystyki niezależnie od profesji, i trafia do więzienia na 60 minut.</p>
 
             <?php if ($gangHeistMessage!==''): ?><p class="stat"><?= e($gangHeistMessage) ?></p><?php endif; ?>
             <?php if (!$gangHeist): ?>
@@ -1602,14 +1602,14 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <?php endif; ?>
           <?php else: ?>
             <h3>Rabunek na spożywczak</h3>
-            <p class="muted">Koszt: 5% energii · Szansa wpadki: 0% · Nagroda: 10–20 $ i pula 10 pkt statystyk dzielona według profesji, minimum +1 do każdej. Bez limitu prób, dopóki masz energię.</p>
+            <p class="muted">Koszt: 5% energii · Szansa wpadki: 0% · Nagroda: 10–20 $ i stała pula 10 pkt statystyk dzielona według profesji, minimum +1 do każdej. Przy niepowodzeniu tracisz 1 pkt (10% puli). Bez limitu prób, dopóki masz energię.</p>
             <?php if ($streetMessage !== ''): ?><p class="stat"><?= e($streetMessage) ?></p><?php endif; ?>
             <form method="post" action="./?page=main&amp;location=ulica">
               <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="street_grocery_robbery">
               <button type="submit" <?= !$stats || (int)$stats['energy'] < 5 ? 'disabled' : '' ?>>Napadnij na spożywczak</button>
             </form>
             <h3>Napad na taksówkę</h3>
-            <p class="muted">Koszt: 10% energii · Moc rabunku: 25–30 · Nagroda: 50–100 $ i pula 10–20 pkt statystyk dzielona według profesji, minimum +1 do każdej. Przy niepowodzeniu tracisz 10% losowej puli punktów (nie 10% obecnych statystyk); ryzyko więzienia 10%. Możesz próbować z dowolną mocą.</p>
+            <p class="muted">Koszt: 10% energii · Moc rabunku: 25–30 · Nagroda: 50–100 $ i stała pula 20 pkt statystyk dzielona według profesji, minimum +1 do każdej. Przy niepowodzeniu tracisz 2 pkt (10% puli), a szansa na więzienie wynosi 10%. Możesz próbować z dowolną mocą.</p>
 
             <form method="post" action="./?page=main&amp;location=ulica">
               <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="street_taxi_robbery">
