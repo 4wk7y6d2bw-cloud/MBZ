@@ -46,12 +46,16 @@ try {
         WHERE gi.invited_user_id=? AND gi.status='pending'");
     $inviteCountStmt->execute([$userId]);
     $pendingGangInvites=(int)$inviteCountStmt->fetchColumn();
-    $version = hash('sha256', json_encode([$player, $rank, $game['game_day'], $game['season'], $game['is_break'], $game['next_ranking_update'], $pendingGangInvites]));
+    $rewardUnreadStmt=$db->prepare("SELECT COUNT(*) FROM gang_heist_reward_notifications
+        WHERE user_id=? AND read_at IS NULL");
+    $rewardUnreadStmt->execute([$userId]);
+    $unreadGangRewards=(int)$rewardUnreadStmt->fetchColumn();
+    $version = hash('sha256', json_encode([$player, $rank, $game['game_day'], $game['season'], $game['is_break'], $game['next_ranking_update'], $pendingGangInvites, $unreadGangRewards]));
     if (isset($_GET['version']) && is_string($_GET['version']) && hash_equals($version, $_GET['version'])) {
         http_response_code(204);
         return;
     }
-    echo json_encode(['version' => $version, 'player' => $player, 'rank' => $rank, 'pending_gang_invites'=>$pendingGangInvites, 'game' => [
+    echo json_encode(['version' => $version, 'player' => $player, 'rank' => $rank, 'pending_gang_invites'=>$pendingGangInvites, 'unread_gang_rewards'=>$unreadGangRewards, 'game' => [
         'game_day' => (int) $game['game_day'],
         'season' => (int) $game['season'],
         'is_break' => (int) $game['is_break'],
