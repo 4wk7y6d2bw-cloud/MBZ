@@ -13,6 +13,10 @@ jobs:
       - name: Pobierz pliki z repo
         uses: actions/checkout@v4
 
+      - name: Sprawdź składnię PHP przed wdrożeniem
+        run: |
+          find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n 1 php -l
+
       - name: Wyślij pliki na hosting
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
