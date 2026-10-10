@@ -364,6 +364,10 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica') {
 $streetTab=(($_GET['street_tab']??'')==='gang' && $streetGang) ? 'gang' : 'robbery';
 
 require_once __DIR__ . '/../base/robbery_rewards.php';
+// Automatically provision the fractional stat-bonus ledger outside robbery transactions.
+if ($user && $db instanceof PDO && $selectedLocation === 'ulica') {
+    ensure_profession_stat_reward_table($db);
+}
 $streetMessage = '';
 $streetReward = null;
 $robberyPower = $stats ? (int) floor(
@@ -384,9 +388,11 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
         $db->beginTransaction();
         try {
             regenerate_player_energy($db, (int)$user['id']);
-            $lock = $db->prepare('SELECT energy FROM player_stats WHERE user_id=? FOR UPDATE');
+            $lock = $db->prepare('SELECT energy,profession FROM player_stats WHERE user_id=? FOR UPDATE');
             $lock->execute([(int)$user['id']]);
-            $currentEnergy = $lock->fetchColumn();
+            $lockedStats = $lock->fetch(PDO::FETCH_ASSOC);
+            $currentEnergy = $lockedStats !== false ? (int)$lockedStats['energy'] : false;
+            $robberyProfession = $lockedStats !== false ? (string)$lockedStats['profession'] : '';
             $energyCost = $streetAction === 'street_taxi_robbery' ? 10 : 5;
             if ($currentEnergy === false || (int)$currentEnergy < $energyCost) {
                 $streetMessage = 'Potrzebujesz co najmniej '.$energyCost.'% energii.';
@@ -395,14 +401,18 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                 // Przedział 25–30 oznacza poziom trudności, a nie blokadę akcji.
                 // Im bliżej/głębiej ponad przedział, tym większa szansa powodzenia; poniżej nadal można próbować.
                 $successChance = $taxi ? max(10, min(95, 50 + ($robberyPower - 25) * 8)) : 100;
+                $successChance = profession_robbery_success($robberyProfession, $successChance);
                 $success = random_int(1,100) <= $successChance;
                 if ($success) {
-                    $streetReward = $taxi ? random_int(50,100) : random_int(10,20);
+                    $streetReward = profession_robbery_cash($robberyProfession, $taxi ? random_int(50,100) : random_int(10,20));
                     $statGain = $taxi ? random_int(2,4) : 1;
+                    $statRewards = profession_robbery_stat_rewards($db,(int)$user['id'],(int)($gameState['season']??0),$robberyProfession,$statGain);
+                    $awardedStats = $statRewards['points'];
                     $rob = $db->prepare('UPDATE player_stats SET energy=energy-?,cash=cash+?,
                         strength=strength+?,endurance=endurance+?,intelligence=intelligence+?,
                         charisma=charisma+?,cunning=cunning+? WHERE user_id=? AND energy>=?');
-                    $rob->execute([$energyCost,$streetReward,$statGain,$statGain,$statGain,$statGain,$statGain,(int)$user['id'],$energyCost]);
+                    $rob->execute([$energyCost,$streetReward,$awardedStats['strength'],$awardedStats['endurance'],
+                        $awardedStats['intelligence'],$awardedStats['charisma'],$awardedStats['cunning'],(int)$user['id'],$energyCost]);
                     $firstDailyRobbery = false;
                     if ($gameState && isset($gameState['season'],$gameState['game_day'])) {
                         try {
@@ -412,7 +422,8 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                             error_log('Daily robbery reward error: '.$rewardError->getMessage());
                         }
                     }
-                    $streetMessage = 'Rabunek udany! Otrzymujesz +'.$streetReward.' $, +'.$statGain.' siły, +'.$statGain.' wytrzymałości, +'.$statGain.' inteligencji, +'.$statGain.' charyzmy i +'.$statGain.' sprytu. Koszt: '.$energyCost.'% energii.'
+                    $streetMessage = 'Rabunek udany! Otrzymujesz +'.$streetReward.' $, +'.$awardedStats['strength'].' siły, +'.$awardedStats['endurance'].' wytrzymałości, +'.$awardedStats['intelligence'].' inteligencji, +'.$awardedStats['charisma'].' charyzmy i +'.$awardedStats['cunning'].' sprytu. Koszt: '.$energyCost.'% energii.'
+                        . profession_robbery_stat_notice($robberyProfession,$statRewards)
                         . ($firstDailyRobbery ? ' Pierwszy udany rabunek dnia: +1 sztabka złota!' : '');
                 } else {
                     $fail = $db->prepare('UPDATE player_stats SET energy=energy-?,
@@ -481,7 +492,7 @@ if ($user && $db instanceof PDO && $selectedLocation==='ulica' && $streetGang &&
                 $lockedHeist=$h->fetch();
                 if (!$lockedHeist) throw new RuntimeException('Ten skok nie jest już aktywny.');
                 if ((int)$lockedHeist['created_by'] !== (int)$user['id']) throw new RuntimeException('Skok może rozpocząć gracz, który go utworzył.');
-                $p=$db->prepare("SELECT ghp.user_id,ps.energy,ps.strength,ps.endurance,ps.intelligence,ps.charisma,ps.cunning FROM gang_heist_participants ghp JOIN gang_members gm ON gm.user_id=ghp.user_id AND gm.gang_id=? JOIN player_stats ps ON ps.user_id=ghp.user_id WHERE ghp.heist_id=? AND ghp.status='accepted' FOR UPDATE");
+                $p=$db->prepare("SELECT ghp.user_id,ps.energy,ps.profession,ps.strength,ps.endurance,ps.intelligence,ps.charisma,ps.cunning FROM gang_heist_participants ghp JOIN gang_members gm ON gm.user_id=ghp.user_id AND gm.gang_id=? JOIN player_stats ps ON ps.user_id=ghp.user_id WHERE ghp.heist_id=? AND ghp.status='accepted' FOR UPDATE");
                 $p->execute([(int)$streetGang['id'],(int)$lockedHeist['id']]);
                 $players=$p->fetchAll();
                 if (count($players)<2) throw new RuntimeException('Napad wymaga minimum 2 zaakceptowanych graczy.');
@@ -515,15 +526,28 @@ if ($user && $db instanceof PDO && $selectedLocation==='ulica' && $streetGang &&
                     $db->commit();
                     redirect('./?page=main&location=wiezienie');
                 } else {
+                    $myGangReward = null;
                     foreach($players as $pl) {
-                        $cash=random_int(500,700); $gain=random_int(5,8);
+                        $profession = (string)$pl['profession'];
+                        $cash = profession_robbery_cash($profession, random_int(500,700));
+                        $gain = random_int(5,8);
+                        $statRewards = profession_robbery_stat_rewards($db,(int)$pl['user_id'],(int)($gameState['season']??0),$profession,$gain);
+                        $awarded = $statRewards['points'];
                         $db->prepare("UPDATE player_stats SET cash=cash+?,strength=strength+?,endurance=endurance+?,intelligence=intelligence+?,charisma=charisma+?,cunning=cunning+? WHERE user_id=?")
-                           ->execute([$cash,$gain,$gain,$gain,$gain,$gain,(int)$pl['user_id']]);
+                           ->execute([$cash,$awarded['strength'],$awarded['endurance'],$awarded['intelligence'],$awarded['charisma'],$awarded['cunning'],(int)$pl['user_id']]);
                         $db->prepare("UPDATE gang_heist_participants SET reward_cash=?,reward_stats=? WHERE heist_id=? AND user_id=?")->execute([$cash,$gain,(int)$lockedHeist['id'],(int)$pl['user_id']]);
+                        if ((int)$pl['user_id'] === (int)$user['id']) {
+                            $myGangReward = ['cash'=>$cash,'stats'=>$awarded,'details'=>$statRewards,'profession'=>$profession];
+                        }
                     }
                     $db->prepare("UPDATE gang_heists SET status='completed',resolved_at=NOW() WHERE id=?")->execute([(int)$lockedHeist['id']]);
                     $db->commit();
-                    $gangHeistMessage='Napad na konwój udany! Każdy uczestnik otrzymał 500–700 $ i +5–8 do każdej statystyki.';
+                    $gangHeistMessage = 'Napad na konwój udany! Każdy uczestnik otrzymał nagrody uwzględniające jego profesję.';
+                    if ($myGangReward !== null) {
+                        $mine = $myGangReward['stats'];
+                        $gangHeistMessage .= ' Twoja nagroda: +'.$myGangReward['cash'].' $, +'.$mine['strength'].' siły, +'.$mine['endurance'].' wytrzymałości, +'.$mine['intelligence'].' inteligencji, +'.$mine['charisma'].' charyzmy i +'.$mine['cunning'].' sprytu.'
+                            . profession_robbery_stat_notice($myGangReward['profession'],$myGangReward['details']);
+                    }
                 }
             }
         } catch(Throwable $ex) {
@@ -1543,7 +1567,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           </div>
           <?php if ($streetTab==='gang' && $streetGang): ?>
             <h3>Napad na konwój</h3>
-            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i +5–8 do każdej statystyki.</p>
+            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i +5–8 do każdej statystyki (przed bonusami profesji).</p>
             <p class="muted">Każdy uczestnik jest sprawdzany względem losowego progu 50–60. Jeśli choć jeden go nie spełni, każdy traci 2% swoich statystyk, a cały zespół trafia do więzienia na 60 minut.</p>
 
             <?php if ($gangHeistMessage!==''): ?><p class="stat"><?= e($gangHeistMessage) ?></p><?php endif; ?>
@@ -1571,14 +1595,14 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <?php endif; ?>
           <?php else: ?>
             <h3>Rabunek na spożywczak</h3>
-            <p class="muted">Koszt: 5% energii · Szansa wpadki: 0% · Nagroda: 10–20 $ i +1 do każdej statystyki. Bez limitu prób, dopóki masz energię.</p>
+            <p class="muted">Koszt: 5% energii · Szansa wpadki: 0% · Nagroda: 10–20 $ i +1 do każdej statystyki (przed bonusami profesji). Bez limitu prób, dopóki masz energię.</p>
             <?php if ($streetMessage !== ''): ?><p class="stat"><?= e($streetMessage) ?></p><?php endif; ?>
             <form method="post" action="./?page=main&amp;location=ulica">
               <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="street_grocery_robbery">
               <button type="submit" <?= !$stats || (int)$stats['energy'] < 5 ? 'disabled' : '' ?>>Napadnij na spożywczak</button>
             </form>
             <h3>Napad na taksówkę</h3>
-            <p class="muted">Koszt: 10% energii · Moc rabunku: 25–30 · Nagroda: 50–100 $ i +2–4 do każdej statystyki. Możesz próbować z dowolną mocą.</p>
+            <p class="muted">Koszt: 10% energii · Moc rabunku: 25–30 · Nagroda: 50–100 $ i +2–4 do każdej statystyki (przed bonusami profesji). Możesz próbować z dowolną mocą.</p>
 
             <form method="post" action="./?page=main&amp;location=ulica">
               <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="street_taxi_robbery">
