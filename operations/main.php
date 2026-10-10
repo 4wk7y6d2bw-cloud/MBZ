@@ -356,9 +356,7 @@ if ($user && $db instanceof PDO) {
             $gangRewardResponse=(string)$_SESSION['mbz_reward_read_flash'];
             unset($_SESSION['mbz_reward_read_flash']);
         }
-        $inboxRewards=$db->prepare("SELECT id,heist_id,gang_name,reward_cash,
-            reward_strength,reward_endurance,reward_intelligence,reward_charisma,
-            reward_cunning,bonus_credits,created_at,read_at
+        $inboxRewards=$db->prepare("SELECT id,heist_id,gang_name,reward_cash,created_at,read_at
             FROM gang_heist_reward_notifications WHERE user_id=?
             ORDER BY id DESC LIMIT 50");
         $inboxRewards->execute([$me]);
@@ -1380,16 +1378,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
                 <?php if ($reward['read_at']===null): ?><span style="color:#58d58a;font-weight:700">Nowe</span><?php endif; ?>
               </div>
               <p class="muted">Otrzymano: <?= e($reward['created_at']) ?></p>
-              <p><strong>+<?= number_format((int)$reward['reward_cash'],0,',',' ') ?> $</strong> gotówki</p>
-              <p>+<?= (int)$reward['reward_strength'] ?> siły,
-                +<?= (int)$reward['reward_endurance'] ?> wytrzymałości,
-                +<?= (int)$reward['reward_intelligence'] ?> inteligencji,
-                +<?= (int)$reward['reward_charisma'] ?> charyzmy,
-                +<?= (int)$reward['reward_cunning'] ?> sprytu.</p>
-              <p><strong>+<?= (int)$reward['reward_strength']+(int)$reward['reward_endurance']+(int)$reward['reward_intelligence']+(int)$reward['reward_charisma']+(int)$reward['reward_cunning'] ?> pkt statystyk</strong></p>
-              <?php if ((int)$reward['bonus_credits']>0): ?>
-                <p><strong>+<?= (int)$reward['bonus_credits'] ?> sztabka złota</strong> za pierwszy udany rabunek dnia.</p>
-              <?php endif; ?>
+              <p>Otrzymano <strong>+<?= number_format((int)$reward['reward_cash'],0,',',' ') ?> $</strong> za skok gangu.</p>
             </article>
           <?php endforeach; ?>
         <?php endif; ?>
