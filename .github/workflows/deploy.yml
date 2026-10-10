@@ -26,10 +26,10 @@ jobs:
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
           protocol: ftp
           port: 21
+          # MySQL connection details belong to hosting, not source control.
           exclude: |
             **/.git*
             **/.git*/**
             **/.github/**
-            # Never replace the hosting-specific MySQL credentials.
             config.php
             **/config.php
