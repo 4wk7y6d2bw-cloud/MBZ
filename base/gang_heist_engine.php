@@ -102,9 +102,10 @@ function gang_heist_cleanup_orphans(PDO $db): void
  */
 /**
  * A member may leave the gang. Only the owner/leader may kick another member.
- * Active heist acceptances are removed atomically with membership. If the
- * pending heist creator departs, the pending heist is cancelled and cleaned up.
- * Past successful heist history is not erased when someone merely leaves.
+ * Active heist acceptances are removed atomically with membership.
+ * A prepared heist ALWAYS stays available while its gang still exists,
+ * even if the creator leaves or membership drops below the requirement.
+ * New gang members can accept later and trigger it automatically.
  */
 function gang_heist_remove_member(PDO $db, int $actorId, int $targetId, bool $kick): string
 {
@@ -153,19 +154,8 @@ function gang_heist_remove_member(PDO $db, int $actorId, int $targetId, bool $ki
             throw new RuntimeException('Nie można wyrzucić lidera gangu.');
         }
 
-        // If the creator leaves, the pending raid must not remain under the
-        // control of a person who is no longer in this gang.
-        $db->prepare('DELETE e FROM gang_heist_events e JOIN gang_heists h ON h.id=e.heist_id
-            WHERE h.gang_id=? AND h.status=\'recruiting\' AND h.created_by=?')
-           ->execute([$gangId,$targetId]);
-        $db->prepare('DELETE p FROM gang_heist_participants p JOIN gang_heists h ON h.id=p.heist_id
-            WHERE h.gang_id=? AND h.status=\'recruiting\' AND h.created_by=?')
-           ->execute([$gangId,$targetId]);
-        $db->prepare("DELETE FROM gang_heists
-            WHERE gang_id=? AND status='recruiting' AND created_by=?")
-           ->execute([$gangId,$targetId]);
-
-        // Any other awaiting raid loses this player's acceptance.
+        // Leaving or kicked players lose their acceptance to pending raids.
+        // The raid itself remains recruiting, including when its creator left.
         $db->prepare('DELETE p FROM gang_heist_participants p JOIN gang_heists h ON h.id=p.heist_id
             WHERE h.gang_id=? AND h.status=\'recruiting\' AND p.user_id=?')
            ->execute([$gangId,$targetId]);
@@ -173,33 +163,12 @@ function gang_heist_remove_member(PDO $db, int $actorId, int $targetId, bool $ki
         $del->execute([$gangId,$targetId]);
         if ($del->rowCount()!==1) throw new RuntimeException('Nie można usunąć członka gangu.');
 
-        // A pending heist may have been valid before this departure but now
-        // require more members than the gang actually has. Cancel it without
-        // awarding rewards or applying penalties; don't leave unusable raids.
-        $memberCountStmt=$db->prepare('SELECT COUNT(*) FROM gang_members WHERE gang_id=?');
-        $memberCountStmt->execute([$gangId]);
-        $remainingMembers=(int)$memberCountStmt->fetchColumn();
-        $pendingStmt=$db->prepare("SELECT id,heist_type FROM gang_heists
-            WHERE gang_id=? AND status='recruiting' FOR UPDATE");
-        $pendingStmt->execute([$gangId]);
-        $cancelled=false;
-        foreach ($pendingStmt->fetchAll(PDO::FETCH_ASSOC) as $waitingHeist) {
-            if ($remainingMembers>=gang_heist_required_acceptances((string)$waitingHeist['heist_type'])) {
-                continue;
-            }
-            $pendingId=(int)$waitingHeist['id'];
-            $db->prepare('DELETE FROM gang_heist_events WHERE heist_id=?')->execute([$pendingId]);
-            $db->prepare('DELETE FROM gang_heist_participants WHERE heist_id=?')->execute([$pendingId]);
-            $db->prepare('DELETE FROM gang_heists WHERE id=? AND gang_id=? AND status=\'recruiting\'')
-               ->execute([$pendingId,$gangId]);
-            $cancelled=true;
-        }
-
+        // The heist stays recruiting even when fewer gang members remain
+        // than its acceptance threshold. New members can accept in the future.
         $db->commit();
-        $message=$kick
-            ? 'Gracz '.$target['login'].' został wyrzucony z gangu.'
-            : 'Opuściłeś gang '.$gang['name'].'.';
-        return $message.($cancelled ? ' Niedokończony skok został anulowany z powodu zbyt małej liczby członków.' : '');
+        return $kick
+            ? 'Gracz '.$target['login'].' został wyrzucony z gangu. Trwający skok nadal oczekuje na akceptacje.'
+            : 'Opuściłeś gang '.$gang['name'].'. Trwający skok gangu nie został anulowany.';
     } catch (Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
         throw $e;
@@ -382,9 +351,9 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
 
         if (!$heist) throw new RuntimeException('Brak skoku oczekującego na akceptację.');
         $required=gang_heist_required_acceptances((string)$heist['heist_type']);
-        if ($memberCount<$required) {
-            throw new RuntimeException('Gang nie ma wymaganej liczby członków: '.$memberCount.' / '.$required.'.');
-        }
+        // Existing heists remain open even if departures reduced gang size
+        // below the threshold. Any current member may accept; execution still
+        // requires the full number of DISTINCT accepted current gang members.
         $heistId=(int)$heist['id'];
         $acceptedStmt=$db->prepare("SELECT 1 FROM gang_heist_participants
             WHERE heist_id=? AND user_id=? AND status='accepted' LIMIT 1");
