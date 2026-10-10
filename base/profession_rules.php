@@ -53,13 +53,13 @@ function profession_stat_distribution_weights(string $profession): array {
 }
 
 /**
- * Automatically create the new signed rounding ledger (one per season/profession).
- * The previous profession_stat_reward_progress table is not reused because its
- * unsigned values belonged to the replaced percentage-bonus system.
+ * Automatically create the rounding ledger for minimum-one-per-stat rewards.
+ * Prior rounding ledgers are left untouched to avoid mixing old fractional rules
+ * with the new minimum-one-per-stat algorithm.
  * CALL OUTSIDE TRANSACTIONS: MySQL CREATE TABLE implicitly commits transactions.
  */
 function ensure_profession_stat_distribution_table(PDO $db): void {
-    $db->exec('CREATE TABLE IF NOT EXISTS profession_stat_distribution_progress (
+    $db->exec('CREATE TABLE IF NOT EXISTS profession_stat_distribution_minimum_progress (
         user_id INT NOT NULL,
         season INT NOT NULL,
         profession VARCHAR(32) NOT NULL,
@@ -73,35 +73,65 @@ function ensure_profession_stat_distribution_table(PDO $db): void {
 }
 
 /**
- * Distribute one complete pool without losing any points. Scores are stored in
- * hundredths of a point; after each assigned point, subtract 100 from the
- * relevant score. Residual scores are carried into the next successful robbery
- * so even smaller allocations get their fair share across repeated attempts.
+ * Distribute one complete pool, guaranteeing +1 to all five stats for a pool
+ * of at least five. Allocate any remaining points by profession specialization,
+ * saving rounding remainders for fair distribution in later robberies.
  *
  * Pure function for tests. $carry comes from the ledger, not player_stats.
  * @return array{points:array<string,int>,pool:int,progress:array<string,int>}
  */
 function profession_allocate_stat_pool(string $profession, int $pool, array $carry = []): array {
     $weights = profession_stat_distribution_weights($profession);
-    if (array_sum($weights) !== 100) {
-        throw new LogicException('Podział statystyk musi wynosić 100%.');
-    }
-    if ($pool < 0 || $pool > 10000) {
-        throw new InvalidArgumentException('Nieprawidłowa pula punktów.');
-    }
-    $points = array_fill_keys(array_keys($weights), 0);
+    if (array_sum($weights) !== 100) throw new LogicException('Podział statystyk musi wynosić 100%.');
+    if ($pool < 0 || $pool > 10000) throw new InvalidArgumentException('Nieprawidłowa pula punktów.');
+
+    $fields = array_keys($weights);
+    $minimum = $pool >= count($fields) ? 1 : 0;
+    $points = array_fill_keys($fields, $minimum);
+    $remaining = $pool - $minimum * count($fields);
     $scores = [];
-    foreach ($weights as $field => $percent) {
-        $scores[$field] = $pool * $percent + (int)($carry[$field] ?? 0);
+    foreach ($fields as $field) $scores[$field] = (int)($carry[$field] ?? 0);
+    if ($remaining === 0) return ['points'=>$points, 'pool'=>$pool, 'progress'=>$scores];
+
+    // Reserve +1 per stat from the pool. Redistribute the remainder in the
+    // profession's proportions, omitting negative excess caused by minimums.
+    $surplus = [];
+    foreach ($weights as $field => $weight) {
+        $surplus[$field] = max(0, $pool * $weight - $minimum * 100);
+    }
+    $surplusTotal = array_sum($surplus);
+    if ($surplusTotal <= 0) {
+        $surplus = $weights;
+        $surplusTotal = 100;
     }
 
-    for ($i = 0; $i < $pool; $i++) {
+    // The quota is in hundredths; give spare hundredths to largest remainders
+    // so the sum is always exactly 100 times the leftover point count.
+    $quota = [];
+    $fractions = [];
+    $quotaTotal = 0;
+    foreach ($fields as $field) {
+        $numerator = $remaining * 100 * $surplus[$field];
+        $quota[$field] = intdiv($numerator, $surplusTotal);
+        $fractions[$field] = $numerator % $surplusTotal;
+        $quotaTotal += $quota[$field];
+    }
+    $missing = $remaining * 100 - $quotaTotal;
+    $priority = $fields;
+    usort($priority, static function (string $a, string $b) use ($fractions, $weights): int {
+        return ($fractions[$b] <=> $fractions[$a])
+            ?: ($weights[$b] <=> $weights[$a])
+            ?: strcmp($a, $b);
+    });
+    for ($i = 0; $i < $missing; $i++) $quota[$priority[$i]]++;
+
+    foreach ($fields as $field) $scores[$field] += $quota[$field];
+    for ($i = 0; $i < $remaining; $i++) {
         $winner = null;
         $best = PHP_INT_MIN;
-        foreach ($weights as $field => $percent) {
-            // A higher professional specialization wins an exact tie.
+        foreach ($fields as $field) {
             if ($winner === null || $scores[$field] > $best ||
-                ($scores[$field] === $best && $percent > $weights[$winner])) {
+                ($scores[$field] === $best && $weights[$field] > $weights[$winner])) {
                 $winner = $field;
                 $best = $scores[$field];
             }
@@ -109,7 +139,6 @@ function profession_allocate_stat_pool(string $profession, int $pool, array $car
         $points[$winner]++;
         $scores[$winner] -= 100;
     }
-
     return ['points'=>$points, 'pool'=>$pool, 'progress'=>$scores];
 }
 
@@ -123,10 +152,10 @@ function profession_robbery_stat_rewards(PDO $db, int $userId, int $season, stri
         throw new InvalidArgumentException('Nieprawidłowa nagroda rabunku.');
     }
 
-    $db->prepare('INSERT IGNORE INTO profession_stat_distribution_progress (user_id,season,profession) VALUES (?,?,?)')
+    $db->prepare('INSERT IGNORE INTO profession_stat_distribution_minimum_progress (user_id,season,profession) VALUES (?,?,?)')
        ->execute([$userId,$season,$profession]);
     $read = $db->prepare('SELECT strength,endurance,intelligence,charisma,cunning
-        FROM profession_stat_distribution_progress
+        FROM profession_stat_distribution_minimum_progress
         WHERE user_id=? AND season=? AND profession=? FOR UPDATE');
     $read->execute([$userId,$season,$profession]);
     $carry = $read->fetch(PDO::FETCH_ASSOC);
@@ -136,7 +165,7 @@ function profession_robbery_stat_rewards(PDO $db, int $userId, int $season, stri
 
     $reward = profession_allocate_stat_pool($profession, $baseGain * 5, $carry);
     $rem = $reward['progress'];
-    $db->prepare('UPDATE profession_stat_distribution_progress
+    $db->prepare('UPDATE profession_stat_distribution_minimum_progress
         SET strength=?,endurance=?,intelligence=?,charisma=?,cunning=?
         WHERE user_id=? AND season=? AND profession=?')
        ->execute([$rem['strength'],$rem['endurance'],$rem['intelligence'],
@@ -150,5 +179,5 @@ function profession_stat_distribution_description(string $profession): string {
 }
 
 function profession_robbery_stat_notice(string $profession, array $reward): string {
-    return ' Pula: '.(int)($reward['pool'] ?? 0).' pkt, podzielona według profesji '.$profession.'.';
+    return ' Pula: '.(int)($reward['pool'] ?? 0).' pkt, podzielona według profesji '.$profession.' (minimum +1 do każdej statystyki).';
 }
