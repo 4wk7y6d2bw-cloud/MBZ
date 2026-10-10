@@ -364,9 +364,9 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica') {
 $streetTab=(($_GET['street_tab']??'')==='gang' && $streetGang) ? 'gang' : 'robbery';
 
 require_once __DIR__ . '/../base/robbery_rewards.php';
-// Automatically provision the fractional stat-bonus ledger outside robbery transactions.
+// Automatically provision the new per-profession stat-pool allocation ledger outside transactions.
 if ($user && $db instanceof PDO && $selectedLocation === 'ulica') {
-    ensure_profession_stat_reward_table($db);
+    ensure_profession_stat_distribution_table($db);
 }
 $streetMessage = '';
 $streetReward = null;
@@ -1565,9 +1565,12 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <a class="button <?= $streetTab==='robbery'?'':'secondary' ?>" href="./?page=main&amp;location=ulica">Rabunki</a>
             <?php if ($streetGang): ?><a class="button <?= $streetTab==='gang'?'':'secondary' ?>" href="./?page=main&amp;location=ulica&amp;street_tab=gang">Skok gangu</a><?php endif; ?>
           </div>
+          <?php if ($stats): ?>
+            <p class="muted">Podział puli punktów dla profesji <?= e((string)$stats['profession']) ?>: <?= e(profession_stat_distribution_description((string)$stats['profession'])) ?>. Suma punktów nie zmienia się.</p>
+          <?php endif; ?>
           <?php if ($streetTab==='gang' && $streetGang): ?>
             <h3>Napad na konwój</h3>
-            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i +5–8 do każdej statystyki (przed bonusami profesji).</p>
+            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i pula 25–40 pkt statystyk na gracza, dzielona według profesji.</p>
             <p class="muted">Każdy uczestnik jest sprawdzany względem losowego progu 50–60. Jeśli choć jeden go nie spełni, każdy traci 2% swoich statystyk, a cały zespół trafia do więzienia na 60 minut.</p>
 
             <?php if ($gangHeistMessage!==''): ?><p class="stat"><?= e($gangHeistMessage) ?></p><?php endif; ?>
@@ -1595,14 +1598,14 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <?php endif; ?>
           <?php else: ?>
             <h3>Rabunek na spożywczak</h3>
-            <p class="muted">Koszt: 5% energii · Szansa wpadki: 0% · Nagroda: 10–20 $ i +1 do każdej statystyki (przed bonusami profesji). Bez limitu prób, dopóki masz energię.</p>
+            <p class="muted">Koszt: 5% energii · Szansa wpadki: 0% · Nagroda: 10–20 $ i pula 5 pkt statystyk dzielona według profesji. Bez limitu prób, dopóki masz energię.</p>
             <?php if ($streetMessage !== ''): ?><p class="stat"><?= e($streetMessage) ?></p><?php endif; ?>
             <form method="post" action="./?page=main&amp;location=ulica">
               <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="street_grocery_robbery">
               <button type="submit" <?= !$stats || (int)$stats['energy'] < 5 ? 'disabled' : '' ?>>Napadnij na spożywczak</button>
             </form>
             <h3>Napad na taksówkę</h3>
-            <p class="muted">Koszt: 10% energii · Moc rabunku: 25–30 · Nagroda: 50–100 $ i +2–4 do każdej statystyki (przed bonusami profesji). Możesz próbować z dowolną mocą.</p>
+            <p class="muted">Koszt: 10% energii · Moc rabunku: 25–30 · Nagroda: 50–100 $ i pula 10–20 pkt statystyk dzielona według profesji. Możesz próbować z dowolną mocą.</p>
 
             <form method="post" action="./?page=main&amp;location=ulica">
               <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="street_taxi_robbery">
