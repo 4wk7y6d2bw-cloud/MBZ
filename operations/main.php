@@ -148,6 +148,11 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 if ($jail) {
     $selectedLocation = 'wiezienie';
+    // A jailed player cannot visit the market or travel screen, even by URL.
+    // Redirect to the cell rather than relying on hidden/disabled links.
+    if (in_array($_GET['view'] ?? '', ['travel','market'], true)) {
+        redirect('./?page=main&location=wiezienie');
+    }
     if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')!=='jail_bribe') {
         redirect('./?page=main&location=wiezienie');
     }
@@ -1029,6 +1034,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         .game-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; padding: 12px; border: 1px solid #333; border-radius: 12px; background: #181818; }
         .game-nav a { padding: 10px 13px; border-radius: 8px; background: #242424; color: #fff; text-decoration: none; font-weight: 700; }
         .game-nav a:hover { background: #333; }
+        .game-nav .nav-disabled { padding: 10px 13px; border-radius: 8px; background: #202020; color: #777; font-weight: 700; cursor: not-allowed; }
         .location-button.locked { pointer-events: none; cursor: not-allowed; opacity: .5; }
         .menu-toggle { display: none; width: 46px; height: 42px; padding: 8px; margin: 0; background: #242424; color: #fff; }
         .menu-toggle span { display: block; height: 3px; margin: 4px 0; background: currentColor; border-radius: 2px; }
@@ -1071,7 +1077,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             .menu-toggle { display: block; }
             .game-nav { display: none; flex-direction: column; width: 100%; }
             .game-nav.open { display: flex; }
-            .game-nav a { width: 100%; }
+            .game-nav a, .game-nav .nav-disabled { width: 100%; }
         }
         .location-grid.traveling {opacity:.45;pointer-events:none;filter:grayscale(1);}
         .travel-status {margin-bottom:16px;border-color:#b28c37;background:#292316;}
@@ -1107,8 +1113,13 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&view=missions">Misje</a>
         <a href="./?page=main&amp;view=contacts">Kontakty<?= $pendingContactCount > 0 ? ' ('.$pendingContactCount.')' : '' ?></a>
         <a href="./?page=main&amp;view=wanted">Wanted</a>
-        <a href="./?page=main&amp;view=travel">Podróż</a>
-        <a href="./?page=main&amp;view=market">Rynek</a>
+        <?php if ($jail): ?>
+          <span class="nav-disabled" aria-disabled="true" title="Niedostępne podczas pobytu w więzieniu">🔒 Podróż</span>
+          <span class="nav-disabled" aria-disabled="true" title="Niedostępne podczas pobytu w więzieniu">🔒 Rynek</span>
+        <?php else: ?>
+          <a href="./?page=main&amp;view=travel">Podróż</a>
+          <a href="./?page=main&amp;view=market">Rynek</a>
+        <?php endif; ?>
         <a href="./?page=main&amp;view=ranking">Ranking</a>
         <a id="notificationNavLink" href="./?page=main&amp;view=notifications">Powiadomienia<?= ($pendingGangInviteCount+$unreadGangRewards)>0 ? ' ('.($pendingGangInviteCount+$unreadGangRewards).')' : '' ?></a>
     </nav>
@@ -1765,7 +1776,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <?php if ($jailMessage!==''): ?><p class="stat"><?= e($jailMessage) ?></p><?php endif; ?>
           <?php if ($jail): ?>
             <h3>Odsiadka</h3>
-            <p class="muted">Do końca kary pozostało około <strong><?= max(1,(int)ceil((int)$jail['seconds_left']/60)) ?> min</strong>. W tym czasie nie możesz wykonywać innych akcji w grze.</p>
+            <p class="muted">Do końca kary pozostało około <strong><?= max(1,(int)ceil((int)$jail['seconds_left']/60)) ?> min</strong>. W tym czasie nie możesz wykonywać innych akcji w grze, w tym podróżować ani korzystać z rynku.</p>
             <h3>Przekup klawisza</h3>
             <p class="muted">Podaj kwotę. Klawisz zabiera pieniądze przy każdej próbie. Jeśli dasz za mało, nie wypuści cię i poprzednia wpłata nie zalicza się do kolejnej próby.</p>
             <form method="post" action="./?page=main&amp;location=wiezienie">
