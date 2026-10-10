@@ -30,3 +30,6 @@ jobs:
             **/.git*
             **/.git*/**
             **/.github/**
+            # Never replace the hosting-specific MySQL credentials.
+            config.php
+            **/config.php
