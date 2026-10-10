@@ -37,6 +37,27 @@ function gang_heist_install(PDO $db): void
         UNIQUE KEY gang_heist_events_once (heist_id,user_id),
         KEY gang_heist_events_user (user_id,id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Independent player inbox: awarded rewards remain visible even if
+    // the gang is later dissolved and its old raid records are removed.
+    // There are NO foreign keys to the gang or heist for this reason.
+    $db->exec("CREATE TABLE IF NOT EXISTS gang_heist_reward_notifications (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        heist_id INT NOT NULL,
+        user_id INT NOT NULL,
+        gang_name VARCHAR(20) NOT NULL,
+        reward_cash INT NOT NULL DEFAULT 0,
+        reward_strength INT NOT NULL DEFAULT 0,
+        reward_endurance INT NOT NULL DEFAULT 0,
+        reward_intelligence INT NOT NULL DEFAULT 0,
+        reward_charisma INT NOT NULL DEFAULT 0,
+        reward_cunning INT NOT NULL DEFAULT 0,
+        bonus_credits TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        read_at DATETIME NULL DEFAULT NULL,
+        UNIQUE KEY gh_reward_once_per_participant (heist_id,user_id),
+        INDEX gh_reward_unread (user_id,read_at,id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
 /**
@@ -457,6 +478,20 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
                 $points['charisma'].' charyzmy, +'.$points['cunning'].' sprytu. Łącznie +40 pkt.'.
                 ($credit?' Pierwszy udany rabunek dnia: +1 sztabka złota.':'');
             gang_heist_store_event($db,$heistId,$gangId,$memberId,'completed',$msg);
+            // ONLY a player who actually participated and was awarded stats
+            // receives a personal notification. Non-participating gang members
+            // do not get reward notices.
+            $rewardInbox=$db->prepare("INSERT INTO gang_heist_reward_notifications
+                (heist_id,user_id,gang_name,reward_cash,reward_strength,reward_endurance,
+                 reward_intelligence,reward_charisma,reward_cunning,bonus_credits)
+                SELECT ?,?,g.name,?,?,?,?,?,?,? FROM gangs g WHERE g.id=?");
+            $rewardInbox->execute([
+                $heistId,$memberId,
+                $cash,
+                (int)$points['strength'],(int)$points['endurance'],
+                (int)$points['intelligence'],(int)$points['charisma'],
+                (int)$points['cunning'],(int)($credit ? 1 : 0),$gangId
+            ]);
         }
         $db->prepare("UPDATE gang_heists SET status='completed',resolved_at=NOW() WHERE id=?")
            ->execute([$heistId]);
