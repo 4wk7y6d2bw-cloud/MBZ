@@ -1712,18 +1712,52 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             return;
         }
 
+        const members = Array.isArray(active.members) ? active.members : [];
+        const accepted = members.filter(member => member.status === 'accepted');
+        const waiting = members.filter(member => member.status !== 'accepted');
         body.append(item('h3', 'Oczekujący napad na konwój'));
-        body.append(item('p', 'Rozpoczął: ' + active.creator + '. Zaakceptowanych: ' + active.accepted_count + '/' + active.required + '.', 'muted'));
-        active.accepted.forEach(participant => {
-            const row = item('p', '', 'stat');
-            const link = item('a', participant.login);
-            link.href = './?page=main&view=profile&player=' + encodeURIComponent(participant.id);
-            row.append(link);
-            body.append(row);
-        });
+        body.append(item('p', 'Rozpoczął: ' + active.creator, 'muted'));
+        const progress = item('p', 'Zaakceptowało: ' + active.accepted_count + ' / ' + active.required +
+            ' · Oczekuje: ' + waiting.length + ' · Członków gangu: ' + members.length, 'stat');
+        progress.style.fontWeight = '700';
+        body.append(progress);
+        body.append(item('p', 'Do automatycznego startu brakuje ' + active.remaining +
+            ' akceptacji. Nie wszyscy członkowie gangu muszą zaakceptować skok.', 'muted'));
+
+        function appendMemberGroup(title, people, isAccepted) {
+            body.append(item('h4', title + ' (' + people.length + ')'));
+            if (people.length === 0) {
+                body.append(item('p', 'Brak graczy w tej grupie.', 'muted'));
+                return;
+            }
+            people.forEach(member => {
+                const row = item('div', '', 'stat');
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
+                row.style.justifyContent = 'space-between';
+                row.style.flexWrap = 'wrap';
+                row.style.gap = '8px';
+                const link = item('a', member.login);
+                link.href = './?page=main&view=profile&player=' + encodeURIComponent(member.id);
+                const status = item('span', isAccepted ? '✓ Zaakceptował' : '⏳ Oczekuje', 'muted');
+                if (isAccepted) status.style.color = '#58d58a';
+                row.append(link, status);
+                body.append(row);
+            });
+        }
+        appendMemberGroup('Zaakceptowali', accepted, true);
+        appendMemberGroup('Oczekują na akceptację', waiting, false);
+
         if (!active.joined) {
-            body.append(actionButton('Akceptuj udział w skoku', 'accept'));
-            body.append(item('p', 'Twoja akceptacja może natychmiast rozpocząć skok.', 'muted'));
+            const accept = actionButton('Akceptuj udział w skoku', 'accept');
+            if (members.length < active.required) {
+                accept.disabled = true;
+                body.append(item('p', 'Za mało aktualnych członków gangu, aby wystartować ten skok.', 'muted'));
+            }
+            body.append(accept);
+            body.append(item('p', active.remaining === 1
+                ? 'Twoja akceptacja uruchomi skok automatycznie.'
+                : 'Skok rozpocznie się automatycznie, gdy zaakceptuje wymagana liczba osób.', 'muted'));
         } else {
             body.append(item('p', 'Zaakceptowałeś udział. Skok wykona się automatycznie po osiągnięciu wymaganej liczby uczestników.', 'muted'));
         }
