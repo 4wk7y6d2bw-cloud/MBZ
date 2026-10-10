@@ -39,6 +39,96 @@ function gang_heist_install(PDO $db): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+/**
+ * Remove leftovers from gang records deleted outside the game (for instance
+ * manually in phpMyAdmin). The caller must be outside a DB transaction.
+ *
+ * Important: only children that reference non-existent parents are removed.
+ * Existing gangs, their participants, heists, and histories are untouched.
+ */
+function gang_heist_cleanup_orphans(PDO $db): void
+{
+    if ($db->inTransaction()) {
+        throw new LogicException('Czyszczenie osieroconych skoków wymaga zakończonej transakcji.');
+    }
+
+    // Avoid expensive DELETEs while most gangs and raids are healthy.
+    $orphanChecks = [
+        "SELECT 1 FROM gang_heists h LEFT JOIN gangs g ON g.id=h.gang_id WHERE g.id IS NULL LIMIT 1",
+        "SELECT 1 FROM gang_heist_participants p LEFT JOIN gang_heists h ON h.id=p.heist_id WHERE h.id IS NULL LIMIT 1",
+        "SELECT 1 FROM gang_heist_events e LEFT JOIN gang_heists h ON h.id=e.heist_id WHERE h.id IS NULL LIMIT 1",
+        "SELECT 1 FROM gang_invites i LEFT JOIN gangs g ON g.id=i.gang_id WHERE g.id IS NULL LIMIT 1",
+        "SELECT 1 FROM gang_members m LEFT JOIN gangs g ON g.id=m.gang_id WHERE g.id IS NULL LIMIT 1",
+    ];
+    $needsCleanup = false;
+    foreach ($orphanChecks as $sql) {
+        if ($db->query($sql)->fetchColumn()) {
+            $needsCleanup = true;
+            break;
+        }
+    }
+    if (!$needsCleanup) return;
+
+    $db->beginTransaction();
+    try {
+        // Delete children first, including events and participants of heists
+        // whose parent gang was removed even though the heist row still exists.
+        $db->exec("DELETE e FROM gang_heist_events e
+            LEFT JOIN gang_heists h ON h.id=e.heist_id
+            LEFT JOIN gangs g ON g.id=h.gang_id
+            WHERE h.id IS NULL OR g.id IS NULL");
+        $db->exec("DELETE p FROM gang_heist_participants p
+            LEFT JOIN gang_heists h ON h.id=p.heist_id
+            LEFT JOIN gangs g ON g.id=h.gang_id
+            WHERE h.id IS NULL OR g.id IS NULL");
+        $db->exec("DELETE h FROM gang_heists h
+            LEFT JOIN gangs g ON g.id=h.gang_id WHERE g.id IS NULL");
+        $db->exec("DELETE i FROM gang_invites i
+            LEFT JOIN gangs g ON g.id=i.gang_id WHERE g.id IS NULL");
+        $db->exec("DELETE m FROM gang_members m
+            LEFT JOIN gangs g ON g.id=m.gang_id WHERE g.id IS NULL");
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+}
+
+/**
+ * Future gang-removal actions must use this transaction-safe helper so the
+ * gang and ALL associated heists, acceptances, results and invitations are
+ * deleted immediately, not left for periodic orphan cleanup. No UI for
+ * deleting gangs is exposed by this helper.
+ */
+function gang_heist_delete_gang(PDO $db, int $gangId, int $leaderId): void
+{
+    if ($gangId <= 0 || $leaderId <= 0) {
+        throw new InvalidArgumentException('Nieprawidłowy gang lub lider.');
+    }
+    $db->beginTransaction();
+    try {
+        $gang=$db->prepare("SELECT id FROM gangs WHERE id=? AND owner_id=? FOR UPDATE");
+        $gang->execute([$gangId,$leaderId]);
+        if (!$gang->fetchColumn()) {
+            throw new RuntimeException('Tylko lider może usunąć swój istniejący gang.');
+        }
+
+        $db->prepare('DELETE FROM gang_heist_events WHERE gang_id=?')->execute([$gangId]);
+        $db->prepare('DELETE p FROM gang_heist_participants p
+            JOIN gang_heists h ON h.id=p.heist_id WHERE h.gang_id=?')->execute([$gangId]);
+        $db->prepare('DELETE FROM gang_heists WHERE gang_id=?')->execute([$gangId]);
+        $db->prepare('DELETE FROM gang_invites WHERE gang_id=?')->execute([$gangId]);
+        $db->prepare('DELETE FROM gang_members WHERE gang_id=?')->execute([$gangId]);
+        $delete=$db->prepare('DELETE FROM gangs WHERE id=? AND owner_id=?');
+        $delete->execute([$gangId,$leaderId]);
+        if ($delete->rowCount()!==1) throw new RuntimeException('Nie można usunąć gangu.');
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+}
+
 function gang_heist_player_gang(PDO $db, int $userId): ?array
 {
     $stmt = $db->prepare("SELECT g.id,g.name,g.owner_id,gm.role,
