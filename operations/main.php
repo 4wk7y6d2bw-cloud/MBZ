@@ -1741,7 +1741,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <section id="gangHeistPanel" aria-label="Skok gangu" aria-live="polite">
               <h3>Napad na konwój</h3>
               <p class="muted">Minimum 2 członków gangu i 2 zaakceptowanych uczestników · koszt 10% energii od uczestnika · wymagana moc: 50–60 · 500–700 $ i stałe 40 pkt na zaakceptowanego gracza.</p>
-              <p class="muted">Skok rusza automatycznie po 2. akceptacji. Jeśli choć jeden zaakceptowany uczestnik nie ma wymaganej mocy lub energii, wszyscy członkowie gangu (również nieuczestniczący) trafiają na godzinę do więzienia i tracą 4 pkt statystyk. Straty są rozdzielane równomiernie, bez względu na profesję.</p>
+              <p class="muted">Skok rusza automatycznie po 2. akceptacji. Jeśli choć jeden zaakceptowany uczestnik nie ma wymaganej mocy lub energii, wyłącznie uczestnicy skoku trafiają na godzinę do więzienia i tracą 4 pkt statystyk. Pozostali członkowie gangu nie ponoszą kary. Straty są rozdzielane równomiernie, bez względu na profesję.</p>
               <div id="gangHeistFeedback" class="stat" role="status" style="display:none"></div>
               <div id="gangHeistBody"><p class="muted">Ładowanie aktywnych skoków gangu…</p></div>
             </section>
