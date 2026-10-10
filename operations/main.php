@@ -244,8 +244,28 @@ $pendingGangInviteCount = 0;
 $gangInviteInbox = [];
 $gangInviteResponse = '';
 $alreadyInGang = false;
+$gangRewardInbox = [];
+$unreadGangRewards = 0;
+$gangRewardResponse = '';
 if ($user && $db instanceof PDO) {
+    // Keep the reward inbox schema provisioned before any transactions.
+    // Installation is automatic; players never have to run SQL by hand.
+    require_once __DIR__ . '/../base/gang_heist_engine.php';
+    gang_heist_install($db);
     $me=(int)$user['id'];
+
+    if ($showNotifications && $_SERVER['REQUEST_METHOD']==='POST'
+        && ($_POST['action'] ?? '')==='gang_rewards_mark_read') {
+        if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+            $gangRewardResponse='Sesja wygasła. Odśwież stronę.';
+        } else {
+            $read=$db->prepare("UPDATE gang_heist_reward_notifications SET read_at=NOW()
+                WHERE user_id=? AND read_at IS NULL");
+            $read->execute([$me]);
+            $_SESSION['mbz_reward_read_flash'] = 'Powiadomienia o nagrodach oznaczone jako przeczytane.';
+            redirect('./?page=main&view=notifications');
+        }
+    }
     if ($showNotifications && $_SERVER['REQUEST_METHOD']==='POST'
         && in_array($_POST['action'] ?? '', ['gang_invite_accept','gang_invite_reject'],true)) {
         if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
@@ -326,8 +346,23 @@ if ($user && $db instanceof PDO) {
         WHERE gi.invited_user_id=? AND gi.status='pending'");
     $pendingInvitesQuery->execute([$me]);
     $pendingGangInviteCount=(int)$pendingInvitesQuery->fetchColumn();
+    $rewardUnreadQuery=$db->prepare("SELECT COUNT(*) FROM gang_heist_reward_notifications
+        WHERE user_id=? AND read_at IS NULL");
+    $rewardUnreadQuery->execute([$me]);
+    $unreadGangRewards=(int)$rewardUnreadQuery->fetchColumn();
 
     if ($showNotifications) {
+        if (isset($_SESSION['mbz_reward_read_flash'])) {
+            $gangRewardResponse=(string)$_SESSION['mbz_reward_read_flash'];
+            unset($_SESSION['mbz_reward_read_flash']);
+        }
+        $inboxRewards=$db->prepare("SELECT id,heist_id,gang_name,reward_cash,
+            reward_strength,reward_endurance,reward_intelligence,reward_charisma,
+            reward_cunning,bonus_credits,created_at,read_at
+            FROM gang_heist_reward_notifications WHERE user_id=?
+            ORDER BY id DESC LIMIT 50");
+        $inboxRewards->execute([$me]);
+        $gangRewardInbox=$inboxRewards->fetchAll(PDO::FETCH_ASSOC);
         if (isset($_SESSION['mbz_gang_invite_flash'])) {
             $gangInviteResponse=(string)$_SESSION['mbz_gang_invite_flash'];
             unset($_SESSION['mbz_gang_invite_flash']);
@@ -1077,7 +1112,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&amp;view=travel">Podróż</a>
         <a href="./?page=main&amp;view=market">Rynek</a>
         <a href="./?page=main&amp;view=ranking">Ranking</a>
-        <a id="notificationNavLink" href="./?page=main&amp;view=notifications">Powiadomienia<?= $pendingGangInviteCount>0 ? ' ('.$pendingGangInviteCount.')' : '' ?></a>
+        <a id="notificationNavLink" href="./?page=main&amp;view=notifications">Powiadomienia<?= ($pendingGangInviteCount+$unreadGangRewards)>0 ? ' ('.($pendingGangInviteCount+$unreadGangRewards).')' : '' ?></a>
     </nav>
 
     <?php if ($activeTravel): ?>
@@ -1325,6 +1360,39 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <?php endif; ?>
           </article>
         <?php endforeach; ?>
+
+        <h3 style="margin-top:30px">Nagrody za skoki gangu<?= $unreadGangRewards>0 ? ' ('.$unreadGangRewards.' nowych)' : '' ?></h3>
+        <?php if ($gangRewardResponse!==''): ?><p class="stat" role="status"><?= e($gangRewardResponse) ?></p><?php endif; ?>
+        <?php if (!$gangRewardInbox): ?>
+          <p class="muted">Nie otrzymałeś jeszcze nagród za skoki gangu.</p>
+        <?php else: ?>
+          <?php if ($unreadGangRewards>0): ?>
+            <form method="post" action="./?page=main&amp;view=notifications" style="margin:12px 0">
+              <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+              <input type="hidden" name="action" value="gang_rewards_mark_read">
+              <button type="submit" class="secondary">Oznacz nagrody jako przeczytane</button>
+            </form>
+          <?php endif; ?>
+          <?php foreach ($gangRewardInbox as $reward): ?>
+            <article class="stat" style="margin:12px 0;padding:16px;<?= $reward['read_at']===null ? 'border-color:#48c987;' : '' ?>">
+              <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+                <strong>Udany skok na konwój · <?= e($reward['gang_name']) ?></strong>
+                <?php if ($reward['read_at']===null): ?><span style="color:#58d58a;font-weight:700">Nowe</span><?php endif; ?>
+              </div>
+              <p class="muted">Otrzymano: <?= e($reward['created_at']) ?></p>
+              <p><strong>+<?= number_format((int)$reward['reward_cash'],0,',',' ') ?> $</strong> gotówki</p>
+              <p>+<?= (int)$reward['reward_strength'] ?> siły,
+                +<?= (int)$reward['reward_endurance'] ?> wytrzymałości,
+                +<?= (int)$reward['reward_intelligence'] ?> inteligencji,
+                +<?= (int)$reward['reward_charisma'] ?> charyzmy,
+                +<?= (int)$reward['reward_cunning'] ?> sprytu.</p>
+              <p><strong>+<?= (int)$reward['reward_strength']+(int)$reward['reward_endurance']+(int)$reward['reward_intelligence']+(int)$reward['reward_charisma']+(int)$reward['reward_cunning'] ?> pkt statystyk</strong></p>
+              <?php if ((int)$reward['bonus_credits']>0): ?>
+                <p><strong>+<?= (int)$reward['bonus_credits'] ?> sztabka złota</strong> za pierwszy udany rabunek dnia.</p>
+              <?php endif; ?>
+            </article>
+          <?php endforeach; ?>
+        <?php endif; ?>
     </section>
     <?php elseif ($showRanking): ?>
     <section class="card location-panel">
@@ -2110,10 +2178,11 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             const button = document.querySelector('form input[name="action"][value="street_grocery_robbery"]')?.form?.querySelector('button[type="submit"]');
             if (button) button.disabled = data.player.energy < 5;
             const inviteBadge = document.getElementById('notificationNavLink');
-            if (inviteBadge && Number.isInteger(data.pending_gang_invites)) {
-                const total = data.pending_gang_invites;
+            if (inviteBadge && Number.isInteger(data.pending_gang_invites) && Number.isInteger(data.unread_gang_rewards)) {
+                const total = data.pending_gang_invites + data.unread_gang_rewards;
                 inviteBadge.textContent = 'Powiadomienia' + (total > 0 ? ' (' + total + ')' : '');
-                inviteBadge.title = total > 0 ? 'Oczekujące zaproszenia do gangu: ' + total : '';
+                inviteBadge.title = total > 0 ? 'Oczekujące zaproszenia: ' + data.pending_gang_invites +
+                    ', nowe nagrody ze skoków: ' + data.unread_gang_rewards : '';
             }
             const countdown = document.getElementById('rankingCountdown');
             if (countdown && data.game.next_ranking_update) countdown.dataset.next = data.game.next_ranking_update;
