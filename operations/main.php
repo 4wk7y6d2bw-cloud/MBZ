@@ -305,7 +305,7 @@ if ($user && $db instanceof PDO) {
                     if ($db->inTransaction()) $db->rollBack();
                     $gangInviteResponse=$e instanceof RuntimeException
                         ? $e->getMessage() : 'Nie udało się odpowiedzieć na zaproszenie.';
-                    if (!$e instanceof RuntimeException) error_log('Gang invite response: '.$e->getMessage());
+                    if (!($e instanceof RuntimeException)) error_log('Gang invite response: '.$e->getMessage());
                 }
             }
         }
@@ -2003,6 +2003,12 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             });
             const button = document.querySelector('form input[name="action"][value="street_grocery_robbery"]')?.form?.querySelector('button[type="submit"]');
             if (button) button.disabled = data.player.energy < 5;
+            const inviteBadge = document.getElementById('notificationNavLink');
+            if (inviteBadge && Number.isInteger(data.pending_gang_invites)) {
+                const total = data.pending_gang_invites;
+                inviteBadge.textContent = 'Powiadomienia' + (total > 0 ? ' (' + total + ')' : '');
+                inviteBadge.title = total > 0 ? 'Oczekujące zaproszenia do gangu: ' + total : '';
+            }
             const countdown = document.getElementById('rankingCountdown');
             if (countdown && data.game.next_ranking_update) countdown.dataset.next = data.game.next_ranking_update;
         } catch (_) { /* Keep existing values during a network error. */ }
