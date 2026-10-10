@@ -172,7 +172,7 @@ $viewGang = null;
 $viewGangIsMember = false;
 $viewGangId = max(0, (int)($_GET['gang'] ?? 0));
 if ($showRanking && $rankingType === 'gangs' && $user && $db instanceof PDO) {
-    $rankingGangs = $db->query("SELECT g.id,g.name,COALESCE(SUM(FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20)),0) AS respect,COUNT(gm.user_id) AS member_count
+    $rankingGangs = $db->query("SELECT g.id,g.name,COALESCE(SUM(FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/5)),0) AS respect,COUNT(gm.user_id) AS member_count
         FROM gangs g
         LEFT JOIN gang_members gm ON gm.gang_id=g.id
         LEFT JOIN player_stats ps ON ps.user_id=gm.user_id
@@ -443,7 +443,7 @@ $gangMembers = [];
 $gangInvitedPlayers = [];
 if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
     $membershipStmt = $db->prepare("SELECT g.id,g.name,g.owner_id,gm.role,
-        COALESCE((SELECT SUM(FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20)) FROM gang_members gm2 JOIN player_stats ps ON ps.user_id=gm2.user_id WHERE gm2.gang_id=g.id),0) AS respect
+        COALESCE((SELECT SUM(FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/5)) FROM gang_members gm2 JOIN player_stats ps ON ps.user_id=gm2.user_id WHERE gm2.gang_id=g.id),0) AS respect
         FROM gang_members gm JOIN gangs g ON g.id=gm.gang_id WHERE gm.user_id=? LIMIT 1");
     $membershipStmt->execute([(int)$user['id']]);
     $gang = $membershipStmt->fetch() ?: null;
@@ -541,7 +541,7 @@ if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
     $gang = $membershipStmt->fetch() ?: null;
     if ($gang) {
         $membersStmt = $db->prepare("SELECT u.id,u.login,gm.role,gm.joined_at,
-            FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20) AS player_respect
+            FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/5) AS player_respect
             FROM gang_members gm JOIN users u ON u.id=gm.user_id
             LEFT JOIN player_stats ps ON ps.user_id=gm.user_id
             WHERE gm.gang_id=? ORDER BY (gm.role='boss') DESC,gm.joined_at ASC,u.id ASC");
@@ -549,7 +549,7 @@ if ($user && $db instanceof PDO && $selectedLocation === 'gang') {
         $gangMembers = $membersStmt->fetchAll();
 
         $invitedStmt = $db->prepare("SELECT u.id,u.login,gi.created_at,
-            FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/20) AS player_respect
+            FLOOR(GREATEST(0,ps.cash)/10)+FLOOR((GREATEST(0,ps.strength)+GREATEST(0,ps.endurance)+GREATEST(0,ps.intelligence)+GREATEST(0,ps.charisma)+GREATEST(0,ps.cunning))/5) AS player_respect
             FROM gang_invites gi JOIN users u ON u.id=gi.invited_user_id
             LEFT JOIN player_stats ps ON ps.user_id=gi.invited_user_id
             WHERE gi.gang_id=? AND gi.status='pending'
@@ -648,7 +648,7 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
                        ->execute([$energyCost,(int)$user['id'],$energyCost]);
                     $streetMessage = 'Rabunek nieudany! -'.$energyCost.'% energii. '.robbery_stat_loss_notice($lossResult);
                     if ($taxi && random_int(1,100) <= 10) {
-                        $respectStmt=$db->prepare("SELECT FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/20) FROM player_stats WHERE user_id=?");
+                        $respectStmt=$db->prepare("SELECT FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/5) FROM player_stats WHERE user_id=?");
                         $respectStmt->execute([(int)$user['id']]);
                         $respect=max(1,(int)$respectStmt->fetchColumn());
                         $base=max(100,5*$respect);
