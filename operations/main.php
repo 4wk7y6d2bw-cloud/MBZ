@@ -148,9 +148,10 @@ $selectedLocation = isset($_GET['location']) && is_string($_GET['location'])
 $selectedLocation = array_key_exists($selectedLocation, $locationNames) ? $selectedLocation : '';
 if ($jail) {
     $selectedLocation = 'wiezienie';
-    // A jailed player cannot visit the market or travel screen, even by URL.
-    // Redirect to the cell rather than relying on hidden/disabled links.
-    if (in_array($_GET['view'] ?? '', ['travel','market'], true)) {
+    // Prison blocks ALL game-menu views, including direct URLs (profiles,
+    // missions, contacts, wanted, travel, market, ranking, notifications).
+    // The jail cell remains visible and bribery is still available.
+    if (isset($_GET['view']) && is_string($_GET['view']) && $_GET['view'] !== '') {
         redirect('./?page=main&location=wiezienie');
     }
     if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action']??'')!=='jail_bribe') {
@@ -219,7 +220,7 @@ $showTravel = ($_GET['view'] ?? '') === 'travel';
 $activeTravel = null;
 $travelMessage = '';
 if ($user && $db instanceof PDO) require __DIR__ . '/../base/travel.php';
-if ($activeTravel) {
+if ($activeTravel && !$jail) {
     // Cała gra pozostaje widoczna. Akcje i lokacje są zablokowane po stronie serwera.
     if ($selectedLocation !== '') {
         redirect('./?page=main');
@@ -1109,19 +1110,20 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <span></span><span></span><span></span>
     </button>
     <nav class="game-nav" id="gameNav">
-        <a href="./?page=main&view=profile">Twój profil</a>
-        <a href="./?page=main&view=missions">Misje</a>
-        <a href="./?page=main&amp;view=contacts">Kontakty<?= $pendingContactCount > 0 ? ' ('.$pendingContactCount.')' : '' ?></a>
-        <a href="./?page=main&amp;view=wanted">Wanted</a>
         <?php if ($jail): ?>
-          <span class="nav-disabled" aria-disabled="true" title="Niedostępne podczas pobytu w więzieniu">🔒 Podróż</span>
-          <span class="nav-disabled" aria-disabled="true" title="Niedostępne podczas pobytu w więzieniu">🔒 Rynek</span>
+          <?php foreach (['Twój profil','Misje','Kontakty','Wanted','Podróż','Rynek','Ranking','Powiadomienia'] as $blockedMenuLabel): ?>
+            <span class="nav-disabled" aria-disabled="true" title="Niedostępne podczas pobytu w więzieniu">🔒 <?= e($blockedMenuLabel) ?></span>
+          <?php endforeach; ?>
         <?php else: ?>
+          <a href="./?page=main&view=profile">Twój profil</a>
+          <a href="./?page=main&view=missions">Misje</a>
+          <a href="./?page=main&amp;view=contacts">Kontakty<?= $pendingContactCount > 0 ? ' ('.$pendingContactCount.')' : '' ?></a>
+          <a href="./?page=main&amp;view=wanted">Wanted</a>
           <a href="./?page=main&amp;view=travel">Podróż</a>
           <a href="./?page=main&amp;view=market">Rynek</a>
+          <a href="./?page=main&amp;view=ranking">Ranking</a>
+          <a id="notificationNavLink" href="./?page=main&amp;view=notifications">Powiadomienia<?= ($pendingGangInviteCount+$unreadGangRewards)>0 ? ' ('.($pendingGangInviteCount+$unreadGangRewards).')' : '' ?></a>
         <?php endif; ?>
-        <a href="./?page=main&amp;view=ranking">Ranking</a>
-        <a id="notificationNavLink" href="./?page=main&amp;view=notifications">Powiadomienia<?= ($pendingGangInviteCount+$unreadGangRewards)>0 ? ' ('.($pendingGangInviteCount+$unreadGangRewards).')' : '' ?></a>
     </nav>
 
     <?php if ($activeTravel): ?>
@@ -1776,7 +1778,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
           <?php if ($jailMessage!==''): ?><p class="stat"><?= e($jailMessage) ?></p><?php endif; ?>
           <?php if ($jail): ?>
             <h3>Odsiadka</h3>
-            <p class="muted">Do końca kary pozostało około <strong><?= max(1,(int)ceil((int)$jail['seconds_left']/60)) ?> min</strong>. W tym czasie nie możesz wykonywać innych akcji w grze, w tym podróżować ani korzystać z rynku.</p>
+            <p class="muted">Do końca kary pozostało około <strong><?= max(1,(int)ceil((int)$jail['seconds_left']/60)) ?> min</strong>. W tym czasie całe menu gry jest zablokowane. Możesz tylko odbyć karę lub przekupić klawisza.</p>
             <h3>Przekup klawisza</h3>
             <p class="muted">Podaj kwotę. Klawisz zabiera pieniądze przy każdej próbie. Jeśli dasz za mało, nie wypuści cię i poprzednia wpłata nie zalicza się do kolejnej próby.</p>
             <form method="post" action="./?page=main&amp;location=wiezienie">
