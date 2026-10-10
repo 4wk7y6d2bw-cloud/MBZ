@@ -9,6 +9,18 @@ declare(strict_types=1);
  */
 const GANG_CONVOY_MIN_MEMBERS = 2;
 const GANG_CONVOY_STAT_POOL = 40;
+
+/**
+ * Required ACCEPTED participants for each heist type, not the number of
+ * members in the gang. Extend this map when another heist is introduced:
+ * for instance, a future heist may require 10 confirmations in a 16-member gang.
+ */
+function gang_heist_required_acceptances(string $heistType): int
+{
+    $requirements = ['convoy' => GANG_CONVOY_MIN_MEMBERS];
+    return max(2, (int)($requirements[$heistType] ?? GANG_CONVOY_MIN_MEMBERS));
+}
+
 const GANG_CONVOY_ENERGY_COST = 10;
 
 function gang_heist_install(PDO $db): void
@@ -44,34 +56,54 @@ function gang_heist_snapshot(PDO $db, int $userId): array
         return ['gang'=>null,'active'=>null,'latest_event'=>null,'jailed'=>false];
     }
     $gangId = (int)$gang['id'];
-    $stmt = $db->prepare("SELECT h.id,h.created_by,u.login AS creator
+    $stmt = $db->prepare("SELECT h.id,h.heist_type,h.created_by,u.login AS creator
         FROM gang_heists h JOIN users u ON u.id=h.created_by
         WHERE h.gang_id=? AND h.status='recruiting' ORDER BY h.id DESC LIMIT 1");
     $stmt->execute([$gangId]);
     $heist = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     $active = null;
     if ($heist) {
-        $list = $db->prepare("SELECT u.id,u.login
-            FROM gang_heist_participants hp
-            JOIN gang_members gm ON gm.user_id=hp.user_id AND gm.gang_id=?
-            JOIN users u ON u.id=hp.user_id
-            WHERE hp.heist_id=? AND hp.status='accepted'
-            ORDER BY hp.joined_at,u.id");
-        $list->execute([$gangId,(int)$heist['id']]);
-        $accepted = array_map(static function (array $p): array {
-            return ['id'=>(int)$p['id'],'login'=>(string)$p['login']];
-        }, $list->fetchAll(PDO::FETCH_ASSOC));
-        $joined = false;
-        foreach ($accepted as $participant) {
-            if ($participant['id']===$userId) $joined=true;
+        // Show EVERY current member of this gang. A participant is accepted
+        // only if they have an accepted row for this specific heist.
+        // Others appear as waiting; the full gang need not accept.
+        $list = $db->prepare("SELECT u.id,u.login,
+            CASE WHEN hp.user_id IS NOT NULL THEN 1 ELSE 0 END AS accepted
+            FROM gang_members gm
+            JOIN users u ON u.id=gm.user_id
+            LEFT JOIN gang_heist_participants hp
+              ON hp.user_id=gm.user_id AND hp.heist_id=? AND hp.status='accepted'
+            WHERE gm.gang_id=?
+            ORDER BY accepted DESC,gm.joined_at ASC,u.id ASC");
+        $list->execute([(int)$heist['id'],$gangId]);
+        $members=[];
+        $accepted=[];
+        $joined=false;
+        foreach ($list->fetchAll(PDO::FETCH_ASSOC) as $person) {
+            $isAccepted=((int)$person['accepted']===1);
+            $member=[
+                'id'=>(int)$person['id'],
+                'login'=>(string)$person['login'],
+                'status'=>$isAccepted ? 'accepted' : 'waiting',
+            ];
+            $members[]=$member;
+            if ($isAccepted) {
+                $accepted[]=$member;
+                if ($member['id']===$userId) $joined=true;
+            }
         }
-        $active = [
+        $required=gang_heist_required_acceptances((string)$heist['heist_type']);
+        $active=[
             'id'=>(int)$heist['id'],
+            'type'=>(string)$heist['heist_type'],
             'creator'=>(string)$heist['creator'],
             'created_by'=>(int)$heist['created_by'],
+            'members'=>$members,
             'accepted'=>$accepted,
             'accepted_count'=>count($accepted),
-            'required'=>GANG_CONVOY_MIN_MEMBERS,
+            'waiting_count'=>count($members)-count($accepted),
+            'member_count'=>count($members),
+            'required'=>$required,
+            'remaining'=>max(0,$required-count($accepted)),
             'joined'=>$joined,
         ];
     }
@@ -94,7 +126,7 @@ function gang_heist_snapshot(PDO $db, int $userId): array
             'id'=>$gangId,
             'name'=>(string)$gang['name'],
             'member_count'=>(int)$gang['member_count'],
-            'required'=>GANG_CONVOY_MIN_MEMBERS
+            'required'=>gang_heist_required_acceptances('convoy')
         ],
         'active'=>$active,
         'latest_event'=>$event,
@@ -122,15 +154,16 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
         $countStmt->execute([$gangId]);
         $memberCount=(int)$countStmt->fetchColumn();
 
-        $activeStmt=$db->prepare("SELECT id,created_by FROM gang_heists
+        $activeStmt=$db->prepare("SELECT id,heist_type,created_by FROM gang_heists
             WHERE gang_id=? AND status='recruiting' ORDER BY id DESC LIMIT 1 FOR UPDATE");
         $activeStmt->execute([$gangId]);
         $heist=$activeStmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
         if ($action==='create') {
             if ($heist) throw new RuntimeException('Skok już jest przygotowywany. Poczekaj na akceptację.');
-            if ($memberCount<GANG_CONVOY_MIN_MEMBERS) {
-                throw new RuntimeException('Za mało członków gangu. Wymaganych: '.GANG_CONVOY_MIN_MEMBERS.'. Aktualnie: '.$memberCount.'.');
+            $createRequired=gang_heist_required_acceptances('convoy');
+            if ($memberCount<$createRequired) {
+                throw new RuntimeException('Za mało członków gangu. Wymaganych: '.$createRequired.'. Aktualnie: '.$memberCount.'.');
             }
             $insert=$db->prepare("INSERT INTO gang_heists(gang_id,created_by,heist_type,status)
                 VALUES (?,?,'convoy','recruiting')");
@@ -143,8 +176,9 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
         }
 
         if (!$heist) throw new RuntimeException('Brak skoku oczekującego na akceptację.');
-        if ($memberCount<GANG_CONVOY_MIN_MEMBERS) {
-            throw new RuntimeException('Gang nie ma wymaganej liczby członków.');
+        $required=gang_heist_required_acceptances((string)$heist['heist_type']);
+        if ($memberCount<$required) {
+            throw new RuntimeException('Gang nie ma wymaganej liczby członków: '.$memberCount.' / '.$required.'.');
         }
         $heistId=(int)$heist['id'];
         $acceptedStmt=$db->prepare("SELECT 1 FROM gang_heist_participants
@@ -164,7 +198,7 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
             WHERE hp.heist_id=? AND hp.status='accepted' ORDER BY hp.user_id");
         $acceptedList->execute([$gangId,$heistId]);
         $participantIds=array_map('intval',$acceptedList->fetchAll(PDO::FETCH_COLUMN));
-        if (count($participantIds)<GANG_CONVOY_MIN_MEMBERS) {
+        if (count($participantIds)<$required) {
             $db->commit();
             return 'Udział zaakceptowany. Skok czeka na pozostałych uczestników.';
         }
