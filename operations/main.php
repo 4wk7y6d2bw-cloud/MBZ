@@ -71,6 +71,19 @@ if ($user && $db instanceof PDO) {
     $jailStmt=$db->prepare("SELECT user_id,jailed_until,bribe_target,TIMESTAMPDIFF(SECOND,NOW(),jailed_until) AS seconds_left FROM player_jail WHERE user_id=? AND jailed_until>NOW() LIMIT 1");
     $jailStmt->execute([(int)$user['id']]);
     $jail=$jailStmt->fetch() ?: null;
+    // Display the reason when every gang member is jailed by an AJAX-triggered
+    // raid, even if this particular player wasn't viewing the heist screen.
+    if ($jail && $jailMessage==='') {
+        try {
+            $heistNoticeStmt=$db->prepare("SELECT message FROM gang_heist_events
+                WHERE user_id=? AND result='failed' AND created_at>=DATE_SUB(NOW(),INTERVAL 60 MINUTE)
+                ORDER BY id DESC LIMIT 1");
+            $heistNoticeStmt->execute([(int)$user['id']]);
+            $jailMessage=(string)($heistNoticeStmt->fetchColumn() ?: '');
+        } catch (PDOException $ignored) {
+            // The event table may not exist yet on older installations.
+        }
+    }
     if (!$jail) {
         $db->prepare("DELETE FROM player_jail WHERE user_id=? AND jailed_until<=NOW()")->execute([(int)$user['id']]);
     }
@@ -1634,7 +1647,6 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     let doingAction = false;
     let lastPanelSignature = '';
     let lastEventId = 0;
-    let latestFeedback = '';
     let haveLoaded = false;
 
     function notify(message, error = false) {
@@ -1720,14 +1732,16 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
     function acceptResponse(data) {
         if (!data.ok || !data.state) throw new Error(data.error || 'Nie udało się pobrać skoku.');
         const event = data.state.latest_event;
-        if (event && event.id !== lastEventId) {
-            lastEventId = event.id;
-            // A successful result (or jail after failure) appears on all clients,
-            // even if another member clicked the final accept button.
-            notify(event.message, event.result === 'failed');
-        }
+        const isNewEvent = !!event && event.id !== lastEventId;
+        if (isNewEvent) lastEventId = event.id;
         render(data.state);
-        if (data.message) notify(data.message);
+        if (isNewEvent) {
+            // Personal rewards, or an actual jail/penalty, take precedence
+            // over the generic "accepted" action confirmation.
+            notify(event.message, event.result === 'failed');
+        } else if (data.message) {
+            notify(data.message);
+        }
     }
 
     async function refresh() {
