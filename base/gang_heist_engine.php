@@ -435,7 +435,7 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
                 $loss=apply_robbery_stat_loss($db,$memberId,$season,GANG_CONVOY_STAT_POOL);
                 $respectStmt=$db->prepare("SELECT FLOOR(GREATEST(0,cash)/10)+
                     FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+
-                    GREATEST(0,charisma)+GREATEST(0,cunning))/20)
+                    GREATEST(0,charisma)+GREATEST(0,cunning))/5)
                     FROM player_stats WHERE user_id=?");
                 $respectStmt->execute([$memberId]);
                 $respect=max(1,(int)$respectStmt->fetchColumn());
