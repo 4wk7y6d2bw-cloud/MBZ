@@ -1766,7 +1766,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
             <?php endforeach; ?>
             <?php if (!$isGangLeader): ?>
               <h3>Opuść gang</h3>
-              <p class="muted">Po wyjściu przestaniesz być członkiem gangu. Jeśli zaakceptowałeś oczekujący skok, twój udział zostanie cofnięty.</p>
+              <p class="muted">Po wyjściu przestaniesz być członkiem gangu i utracisz akceptację oczekującego skoku. Sam skok pozostanie aktywny i będzie czekał na pozostałych lub nowych członków.</p>
               <form method="post" action="./?page=main&amp;location=gang"
                 onsubmit="return confirm('Na pewno chcesz opuścić gang?');">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
@@ -1954,13 +1954,18 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         const accepted = members.filter(member => member.status === 'accepted');
         const waiting = members.filter(member => member.status !== 'accepted');
         body.append(item('h3', 'Oczekujący napad na konwój'));
-        body.append(item('p', 'Rozpoczął: ' + active.creator, 'muted'));
+        body.append(item('p', 'Utworzył: ' + active.creator, 'muted'));
         const progress = item('p', 'Zaakceptowało: ' + active.accepted_count + ' / ' + active.required +
             ' · Oczekuje: ' + waiting.length + ' · Członków gangu: ' + members.length, 'stat');
         progress.style.fontWeight = '700';
         body.append(progress);
         body.append(item('p', 'Do automatycznego startu brakuje ' + active.remaining +
             ' akceptacji. Nie wszyscy członkowie gangu muszą zaakceptować skok.', 'muted'));
+        if (members.length < active.required) {
+            body.append(item('p', 'Skok nadal trwa. W gangu jest teraz tylko ' +
+                members.length + ' z wymaganych ' + active.required +
+                ' członków. Poczekajcie na nowych członków, którzy będą mogli zaakceptować udział.', 'muted'));
+        }
 
         function appendMemberGroup(title, people, isAccepted) {
             body.append(item('h4', title + ' (' + people.length + ')'));
@@ -1987,12 +1992,9 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         appendMemberGroup('Oczekują na akceptację', waiting, false);
 
         if (!active.joined) {
-            const accept = actionButton('Akceptuj udział w skoku', 'accept');
-            if (members.length < active.required) {
-                accept.disabled = true;
-                body.append(item('p', 'Za mało aktualnych członków gangu, aby wystartować ten skok.', 'muted'));
-            }
-            body.append(accept);
+            // Every current member can accept a pending heist, even while
+            // overall gang membership is temporarily below its threshold.
+            body.append(actionButton('Akceptuj udział w skoku', 'accept'));
             body.append(item('p', active.remaining === 1
                 ? 'Twoja akceptacja uruchomi skok automatycznie.'
                 : 'Skok rozpocznie się automatycznie, gdy zaakceptuje wymagana liczba osób.', 'muted'));
