@@ -15,12 +15,12 @@ if ($stats && $stats['profession'] !== null && $stats['current_city'] !== null) 
 }
 
 $professionDescriptions = [
- 'Morderca' => 'Silniejszy w walce z graczami. Zabójstwa pomagają mu odzyskiwać energię.',
- 'Złodziej' => 'Zdobywa większe łupy i ma większe szanse powodzenia napadów.',
- 'Biznesmen' => 'Taniej inwestuje w budynki i może posiadać więcej nieruchomości.',
- 'Gangster' => 'Ma wszechstronne umiejętności, lepsze warunki w więzieniu i mniejsze straty po nieudanych napadach.',
- 'Diler' => 'Zarabia więcej na handlu narkotykami oraz przewozi i magazynuje większe ilości towaru.',
- 'Alfons' => 'Więcej zarabia na własnych lokalach i zatrudnia w nich dodatkowych pracowników.',
+ 'Morderca' => '40% punktów statystyk z rabunków trafia w siłę i 40% w wytrzymałość. Silniejszy w walce z graczami.',
+ 'Złodziej' => '40% punktów z rabunków trafia w spryt. Zdobywa większe łupy i ma większe szanse powodzenia napadów.',
+ 'Biznesmen' => '60% punktów z rabunków trafia w inteligencję. Taniej inwestuje w budynki i ma więcej nieruchomości.',
+ 'Gangster' => 'Dzieli punkty po 20% na każdą statystykę. Ma lepsze warunki w więzieniu i mniejsze straty po nieudanych napadach.',
+ 'Diler' => '60% punktów z rabunków trafia w spryt. Zarabia więcej na handlu i przewozi większe ilości towaru.',
+ 'Alfons' => '50% punktów z rabunków trafia w charyzmę, a 30% w spryt. Lepiej zarabia na własnych lokalach.',
 ];
 
 $professions = [
