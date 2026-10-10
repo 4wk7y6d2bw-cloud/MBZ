@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 /**
  * MBZ gang heists: two accepted players trigger the convoy automatically.
- * The creator is accepted on creation. All gang members share the penalties
- * on failure, including members who did not accept. Rewards go only to
- * the accepted participants.
+ * The creator is accepted on creation. Failure penalties apply only to
+ * accepted participants of the resolved heist, not other gang members.
+ * Successful rewards likewise belong only to the accepted participants.
  */
 const GANG_CONVOY_MIN_MEMBERS = 2;
 const GANG_CONVOY_STAT_POOL = 40;
@@ -427,9 +427,11 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
         }
 
         if ($failed) {
-            // Deliberate gameplay rule: EVERY current gang member is punished.
+            // Only accepted participants of this heist lose stats and go to
+            // jail. Other gang members are not affected by the failed heist.
             foreach ($members as $member) {
                 $memberId=(int)$member['user_id'];
+                if (!isset($participants[$memberId])) continue;
                 $loss=apply_robbery_stat_loss($db,$memberId,$season,GANG_CONVOY_STAT_POOL);
                 $respectStmt=$db->prepare("SELECT FLOOR(GREATEST(0,cash)/10)+
                     FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+
@@ -444,14 +446,14 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
                     ON DUPLICATE KEY UPDATE jailed_until=VALUES(jailed_until),
                     bribe_target=VALUES(bribe_target),created_at=NOW()")
                     ->execute([$memberId,$bribe]);
-                $msg='Skok gangu nieudany. Jeden z zaakceptowanych uczestników nie spełnił wymagań mocy (50–60) lub energii (10%). '
-                    .'Wszyscy członkowie gangu trafili do więzienia na 60 minut. '.robbery_stat_loss_notice($loss);
+                $msg='Skok gangu nieudany. Jeden z uczestników nie spełnił wymagań mocy (50–60) lub energii (10%). '
+                    .'Tylko uczestnicy skoku trafili do więzienia na 60 minut. '.robbery_stat_loss_notice($loss);
                 gang_heist_store_event($db,$heistId,$gangId,$memberId,'failed',$msg);
             }
             $db->prepare("UPDATE gang_heists SET status='failed',resolved_at=NOW() WHERE id=?")
                ->execute([$heistId]);
             $db->commit();
-            return 'Skok wykonał się automatycznie, ale nie powiódł się. Cały gang trafił do więzienia.';
+            return 'Skok wykonał się automatycznie, ale nie powiódł się. Do więzienia trafili wyłącznie uczestnicy skoku.';
         }
 
         // One cash roll PER HEIST, not per player: all participants share the
