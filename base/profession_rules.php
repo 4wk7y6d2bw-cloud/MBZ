@@ -1,5 +1,5 @@
 <?php
-// Central profession rules, including percentage-based stat rewards from successful street and gang robberies.
+// Central profession rules. Successful robberies distribute a fixed stat pool by profession.
 function profession_rules(string $profession): array {
     $rules = [
         'Morderca' => ['stats'=>['strength'=>.02,'endurance'=>.02,'intelligence'=>-.01], 'pvp_power'=>.03, 'kill_energy'=>5],
@@ -35,89 +35,120 @@ function profession_drug_capacity(string $profession, int $baseCapacity, bool $w
 }
 
 /**
- * Persist fractional profession bonuses as hundredths of a stat point.
- * The season is part of the key so a new season starts at zero.
- * Must be called OUTSIDE a transaction (MySQL DDL causes implicit commits).
+ * Percentage of the total stat-point pool earned from successful robberies.
+ * Every profession uses exactly 100% of the pool — no extra stat points are created.
+ * Separate non-stat perks (cash, PvP, prison, trade) stay in profession_rules().
  */
-function ensure_profession_stat_reward_table(PDO $db): void {
-    $db->exec('CREATE TABLE IF NOT EXISTS profession_stat_reward_progress (
+function profession_stat_distribution_weights(string $profession): array {
+    $weights = [
+        'Morderca' => ['strength'=>40,'endurance'=>40,'intelligence'=>5,'charisma'=>5,'cunning'=>10],
+        'Złodziej' => ['strength'=>20,'endurance'=>10,'intelligence'=>20,'charisma'=>10,'cunning'=>40],
+        'Biznesmen' => ['strength'=>10,'endurance'=>10,'intelligence'=>60,'charisma'=>10,'cunning'=>10],
+        'Alfons' => ['strength'=>5,'endurance'=>5,'intelligence'=>10,'charisma'=>50,'cunning'=>30],
+        'Diler' => ['strength'=>10,'endurance'=>10,'intelligence'=>10,'charisma'=>10,'cunning'=>60],
+        'Gangster' => ['strength'=>20,'endurance'=>20,'intelligence'=>20,'charisma'=>20,'cunning'=>20],
+    ];
+    // Invalid/unselected professions get a safe, equal allocation.
+    return $weights[$profession] ?? $weights['Gangster'];
+}
+
+/**
+ * Automatically create the new signed rounding ledger (one per season/profession).
+ * The previous profession_stat_reward_progress table is not reused because its
+ * unsigned values belonged to the replaced percentage-bonus system.
+ * CALL OUTSIDE TRANSACTIONS: MySQL CREATE TABLE implicitly commits transactions.
+ */
+function ensure_profession_stat_distribution_table(PDO $db): void {
+    $db->exec('CREATE TABLE IF NOT EXISTS profession_stat_distribution_progress (
         user_id INT NOT NULL,
         season INT NOT NULL,
-        strength TINYINT UNSIGNED NOT NULL DEFAULT 0,
-        endurance TINYINT UNSIGNED NOT NULL DEFAULT 0,
-        intelligence TINYINT UNSIGNED NOT NULL DEFAULT 0,
-        charisma TINYINT UNSIGNED NOT NULL DEFAULT 0,
-        cunning TINYINT UNSIGNED NOT NULL DEFAULT 0,
-        PRIMARY KEY (user_id, season)
+        profession VARCHAR(32) NOT NULL,
+        strength SMALLINT NOT NULL DEFAULT 0,
+        endurance SMALLINT NOT NULL DEFAULT 0,
+        intelligence SMALLINT NOT NULL DEFAULT 0,
+        charisma SMALLINT NOT NULL DEFAULT 0,
+        cunning SMALLINT NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, season, profession)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 }
 
 /**
- * Apply profession stat modifiers to earned robbery rewards, not the entire
- * character's existing stats. A +2% bonus on +3 points accrues 0.06 point;
- * once a full point has been accumulated, it is awarded atomically.
- * Negative modifiers likewise withhold a point only after reaching 1.00.
+ * Distribute one complete pool without losing any points. Scores are stored in
+ * hundredths of a point; after each assigned point, subtract 100 from the
+ * relevant score. Residual scores are carried into the next successful robbery
+ * so even smaller allocations get their fair share across repeated attempts.
  *
- * Call from inside the successful robbery transaction.
- * @return array{points:array<string,int>, adjustments:array<string,int>, progress:array<string,int>}
+ * Pure function for tests. $carry comes from the ledger, not player_stats.
+ * @return array{points:array<string,int>,pool:int,progress:array<string,int>}
  */
-function profession_robbery_stat_rewards(PDO $db, int $userId, int $season, string $profession, int $baseGain): array {
-    $fields = ['strength','endurance','intelligence','charisma','cunning'];
-    $points = array_fill_keys($fields, $baseGain);
-    $adjustments = array_fill_keys($fields, 0);
-    $progress = array_fill_keys($fields, 0);
-    $modifiers = profession_rules($profession)['stats'] ?? [];
-    if ($baseGain <= 0 || !$modifiers) {
-        return ['points'=>$points, 'adjustments'=>$adjustments, 'progress'=>$progress];
+function profession_allocate_stat_pool(string $profession, int $pool, array $carry = []): array {
+    $weights = profession_stat_distribution_weights($profession);
+    if (array_sum($weights) !== 100) {
+        throw new LogicException('Podział statystyk musi wynosić 100%.');
+    }
+    if ($pool < 0 || $pool > 10000) {
+        throw new InvalidArgumentException('Nieprawidłowa pula punktów.');
+    }
+    $points = array_fill_keys(array_keys($weights), 0);
+    $scores = [];
+    foreach ($weights as $field => $percent) {
+        $scores[$field] = $pool * $percent + (int)($carry[$field] ?? 0);
     }
 
-    $db->prepare('INSERT IGNORE INTO profession_stat_reward_progress (user_id, season) VALUES (?, ?)')
-       ->execute([$userId, $season]);
-    $stmt = $db->prepare('SELECT strength,endurance,intelligence,charisma,cunning
-        FROM profession_stat_reward_progress WHERE user_id=? AND season=? FOR UPDATE');
-    $stmt->execute([$userId, $season]);
-    $stored = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$stored) {
-        throw new RuntimeException('Nie można naliczyć premii profesji.');
+    for ($i = 0; $i < $pool; $i++) {
+        $winner = null;
+        $best = PHP_INT_MIN;
+        foreach ($weights as $field => $percent) {
+            // A higher professional specialization wins an exact tie.
+            if ($winner === null || $scores[$field] > $best ||
+                ($scores[$field] === $best && $percent > $weights[$winner])) {
+                $winner = $field;
+                $best = $scores[$field];
+            }
+        }
+        $points[$winner]++;
+        $scores[$winner] -= 100;
     }
 
-    foreach ($fields as $field) {
-        $rate = (float)($modifiers[$field] ?? 0);
-        $progress[$field] = (int)$stored[$field];
-        if ($rate == 0.0) continue;
-        // All configured modifiers are whole percentages: 0.02 = 2/100.
-        $rateHundredths = (int)round(abs($rate) * 100);
-        $total = $progress[$field] + $baseGain * $rateHundredths;
-        $whole = intdiv($total, 100);
-        $progress[$field] = $total % 100;
-        $adjustments[$field] = $rate > 0 ? $whole : -min($baseGain, $whole);
-        $points[$field] = max(0, $baseGain + $adjustments[$field]);
-    }
-
-    $db->prepare('UPDATE profession_stat_reward_progress
-        SET strength=?,endurance=?,intelligence=?,charisma=?,cunning=?
-        WHERE user_id=? AND season=?')
-       ->execute([$progress['strength'],$progress['endurance'],$progress['intelligence'],
-                  $progress['charisma'],$progress['cunning'],$userId,$season]);
-
-    return ['points'=>$points, 'adjustments'=>$adjustments, 'progress'=>$progress];
+    return ['points'=>$points, 'pool'=>$pool, 'progress'=>$scores];
 }
 
-/** Describe the fractional bonus, so a player can see it even before +1 is reached. */
-function profession_robbery_stat_notice(string $profession, array $reward): string {
-    $names = ['strength'=>'siła','endurance'=>'wytrzymałość',
-              'intelligence'=>'inteligencja','charisma'=>'charyzma','cunning'=>'spryt'];
-    $modifiers = profession_rules($profession)['stats'] ?? [];
-    $parts = [];
-    foreach ($names as $field=>$name) {
-        $rate = (float)($modifiers[$field] ?? 0);
-        if ($rate == 0.0) continue;
-        $rateLabel = ($rate > 0 ? '+' : '-') . (int)round(abs($rate)*100) . '%';
-        $adjustment = (int)($reward['adjustments'][$field] ?? 0);
-        $remainder = (int)($reward['progress'][$field] ?? 0);
-        $deltaLabel = $adjustment > 0 ? '+'.$adjustment.' pkt teraz, ' :
-                      ($adjustment < 0 ? $adjustment.' pkt teraz, ' : '');
-        $parts[] = $name.' '.$rateLabel.' ('.$deltaLabel.'postęp '.number_format($remainder/100,2,',','').' / 1 pkt)';
+/**
+ * Allocate the five-stat total that used to give $baseGain to each statistic.
+ * Run INSIDE the already-open successful robbery transaction. On rollback the
+ * allocation ledger and the actual character-stat UPDATE are both reverted.
+ */
+function profession_robbery_stat_rewards(PDO $db, int $userId, int $season, string $profession, int $baseGain): array {
+    if ($baseGain < 0 || $baseGain > 2000) {
+        throw new InvalidArgumentException('Nieprawidłowa nagroda rabunku.');
     }
-    return $parts ? ' Premia profesji '.$profession.': '.implode('; ',$parts).'.' : '';
+
+    $db->prepare('INSERT IGNORE INTO profession_stat_distribution_progress (user_id,season,profession) VALUES (?,?,?)')
+       ->execute([$userId,$season,$profession]);
+    $read = $db->prepare('SELECT strength,endurance,intelligence,charisma,cunning
+        FROM profession_stat_distribution_progress
+        WHERE user_id=? AND season=? AND profession=? FOR UPDATE');
+    $read->execute([$userId,$season,$profession]);
+    $carry = $read->fetch(PDO::FETCH_ASSOC);
+    if (!$carry) {
+        throw new RuntimeException('Nie można naliczyć punktów statystyk.');
+    }
+
+    $reward = profession_allocate_stat_pool($profession, $baseGain * 5, $carry);
+    $rem = $reward['progress'];
+    $db->prepare('UPDATE profession_stat_distribution_progress
+        SET strength=?,endurance=?,intelligence=?,charisma=?,cunning=?
+        WHERE user_id=? AND season=? AND profession=?')
+       ->execute([$rem['strength'],$rem['endurance'],$rem['intelligence'],
+                  $rem['charisma'],$rem['cunning'],$userId,$season,$profession]);
+    return $reward;
+}
+
+function profession_stat_distribution_description(string $profession): string {
+    $weights = profession_stat_distribution_weights($profession);
+    return 'Siła '.$weights['strength'].'% · Wytrzymałość '.$weights['endurance'].'% · Inteligencja '.$weights['intelligence'].'% · Charyzma '.$weights['charisma'].'% · Spryt '.$weights['cunning'].'%';
+}
+
+function profession_robbery_stat_notice(string $profession, array $reward): string {
+    return ' Pula: '.(int)($reward['pool'] ?? 0).' pkt, podzielona według profesji '.$profession.'.';
 }
