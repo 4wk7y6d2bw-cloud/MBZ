@@ -454,6 +454,10 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
             return 'Skok wykonał się automatycznie, ale nie powiódł się. Cały gang trafił do więzienia.';
         }
 
+        // One cash roll PER HEIST, not per player: all participants share the
+        // same base reward. Profession perks (e.g. Thief +2%) apply afterward,
+        // individually, without reducing anyone else's reward.
+        $sharedBaseCash=random_int(500,700);
         foreach ($members as $member) {
             $memberId=(int)$member['user_id'];
             if (!isset($participants[$memberId])) {
@@ -462,7 +466,7 @@ function gang_heist_action(PDO $db, int $userId, string $action, int $season, in
                 continue;
             }
             $profession=(string)$member['profession'];
-            $cash=profession_robbery_cash($profession,random_int(500,700));
+            $cash=profession_robbery_cash($profession,$sharedBaseCash);
             $rewards=profession_robbery_stat_rewards($db,$memberId,$season,$profession,8);
             $points=$rewards['points'];
             $db->prepare('UPDATE player_stats SET cash=cash+?,
