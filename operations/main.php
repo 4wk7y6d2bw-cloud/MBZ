@@ -465,110 +465,9 @@ if ($user && $db instanceof PDO && $selectedLocation === 'ulica'
         }
     }
 }
-// Skok gangu: konwój wymaga minimum 2 zaakceptowanych uczestników.
-if ($user && $db instanceof PDO && $selectedLocation==='ulica' && $streetGang && $_SERVER['REQUEST_METHOD']==='POST'
-    && in_array($streetAction,['gang_heist_create','gang_heist_join','gang_heist_start'],true)) {
-    if (!csrf_valid(is_string($_POST['csrf_token']??null)?$_POST['csrf_token']:null)) {
-        $gangHeistMessage='Sesja wygasła. Odśwież stronę.';
-    } elseif ($activeTravel) {
-        $gangHeistMessage='Nie możesz brać udziału w skoku podczas podróży.';
-    } else {
-        try {
-            if ($streetAction==='gang_heist_create') {
-                if ($gangHeist) throw new RuntimeException('Twój gang ma już przygotowywany skok.');
-                $db->beginTransaction();
-                $q=$db->prepare("INSERT INTO gang_heists(gang_id,created_by,heist_type,status) VALUES (?,?,'convoy','recruiting')");
-                $q->execute([(int)$streetGang['id'],(int)$user['id']]);
-                $hid=(int)$db->lastInsertId();
-                $db->prepare("INSERT INTO gang_heist_participants(heist_id,user_id,status,robbery_power) VALUES (?,?,'accepted',?)")
-                   ->execute([$hid,(int)$user['id'],$robberyPower]);
-                $db->commit();
-                $gangHeistMessage='Napad na konwój utworzony. Potrzebny jest jeszcze co najmniej jeden członek gangu.';
-            } elseif ($streetAction==='gang_heist_join') {
-                if (!$gangHeist) throw new RuntimeException('Brak aktywnego skoku.');
-                $db->prepare("INSERT INTO gang_heist_participants(heist_id,user_id,status,robbery_power) VALUES (?,?,'accepted',?) ON DUPLICATE KEY UPDATE status='accepted',robbery_power=VALUES(robbery_power)")
-                   ->execute([(int)$gangHeist['id'],(int)$user['id'],$robberyPower]);
-                $gangHeistMessage='Zaakceptowałeś udział w napadzie na konwój.';
-            } else {
-                if (!$gangHeist) throw new RuntimeException('Brak aktywnego skoku.');
-                $db->beginTransaction();
-                $h=$db->prepare("SELECT * FROM gang_heists WHERE id=? AND gang_id=? AND status='recruiting' FOR UPDATE");
-                $h->execute([(int)$gangHeist['id'],(int)$streetGang['id']]);
-                $lockedHeist=$h->fetch();
-                if (!$lockedHeist) throw new RuntimeException('Ten skok nie jest już aktywny.');
-                if ((int)$lockedHeist['created_by'] !== (int)$user['id']) throw new RuntimeException('Skok może rozpocząć gracz, który go utworzył.');
-                $p=$db->prepare("SELECT ghp.user_id,ps.energy,ps.profession,ps.strength,ps.endurance,ps.intelligence,ps.charisma,ps.cunning FROM gang_heist_participants ghp JOIN gang_members gm ON gm.user_id=ghp.user_id AND gm.gang_id=? JOIN player_stats ps ON ps.user_id=ghp.user_id WHERE ghp.heist_id=? AND ghp.status='accepted' FOR UPDATE");
-                $p->execute([(int)$streetGang['id'],(int)$lockedHeist['id']]);
-                $players=$p->fetchAll();
-                if (count($players)<2) throw new RuntimeException('Napad wymaga minimum 2 zaakceptowanych graczy.');
-                foreach($players as $pl) if((int)$pl['energy']<10) throw new RuntimeException('Każdy uczestnik musi mieć minimum 10% energii.');
-
-                $failed=false;
-                foreach($players as $pl) {
-                    $power=(int)floor((int)$pl['strength']*.35+(int)$pl['endurance']*.20+(int)$pl['intelligence']*.15+(int)$pl['charisma']*.10+(int)$pl['cunning']*.20);
-                    if($power<random_int(50,60))$failed=true;
-                    $db->prepare("UPDATE gang_heist_participants SET robbery_power=? WHERE heist_id=? AND user_id=?")->execute([$power,(int)$lockedHeist['id'],(int)$pl['user_id']]);
-                    $db->prepare("UPDATE player_stats SET energy=energy-10 WHERE user_id=?")->execute([(int)$pl['user_id']]);
-                }
-                if($failed) {
-                    $myFailureLoss = null;
-                    foreach($players as $pl) {
-                        $failedPool = 40;
-                        $lossResult = apply_robbery_stat_loss($db,(int)$pl['user_id'],(int)($gameState['season']??0),$failedPool);
-                        if ((int)$pl['user_id'] === (int)$user['id']) $myFailureLoss = $lossResult;
-                        $respectStmt=$db->prepare("SELECT FLOOR(GREATEST(0,cash)/10)+FLOOR((GREATEST(0,strength)+GREATEST(0,endurance)+GREATEST(0,intelligence)+GREATEST(0,charisma)+GREATEST(0,cunning))/20) FROM player_stats WHERE user_id=?");
-                        $respectStmt->execute([(int)$pl['user_id']]);
-                        $respect=max(1,(int)$respectStmt->fetchColumn());
-                        $base=max(100,5*$respect);
-                        $target=random_int(max(1,(int)floor($base*.70)),max(2,(int)ceil($base*1.40)));
-                        $db->prepare("INSERT INTO player_jail(user_id,jailed_until,bribe_target) VALUES (?,DATE_ADD(NOW(),INTERVAL 60 MINUTE),?) ON DUPLICATE KEY UPDATE jailed_until=VALUES(jailed_until),bribe_target=VALUES(bribe_target),created_at=NOW()")
-                           ->execute([(int)$pl['user_id'],$target]);
-                    }
-                    $db->prepare("UPDATE gang_heists SET status='failed',resolved_at=NOW() WHERE id=?")->execute([(int)$lockedHeist['id']]);
-                    $db->commit();
-                    $_SESSION['mbz_heist_failure_notice'] = 'Napad na konwój nieudany! Każdy uczestnik trafił do więzienia na 60 minut. '
-                        . ($myFailureLoss !== null ? robbery_stat_loss_notice($myFailureLoss) : 'Strata 10% puli statystyk.');
-                    redirect('./?page=main&location=wiezienie');
-                } else {
-                    $myGangReward = null;
-                    foreach($players as $pl) {
-                        $profession = (string)$pl['profession'];
-                        $cash = profession_robbery_cash($profession, random_int(500,700));
-                        $gain = 8;
-                        $statRewards = profession_robbery_stat_rewards($db,(int)$pl['user_id'],(int)($gameState['season']??0),$profession,$gain);
-                        $awarded = $statRewards['points'];
-                        $db->prepare("UPDATE player_stats SET cash=cash+?,strength=strength+?,endurance=endurance+?,intelligence=intelligence+?,charisma=charisma+?,cunning=cunning+? WHERE user_id=?")
-                           ->execute([$cash,$awarded['strength'],$awarded['endurance'],$awarded['intelligence'],$awarded['charisma'],$awarded['cunning'],(int)$pl['user_id']]);
-                        $db->prepare("UPDATE gang_heist_participants SET reward_cash=?,reward_stats=? WHERE heist_id=? AND user_id=?")->execute([$cash,$gain,(int)$lockedHeist['id'],(int)$pl['user_id']]);
-                        if ((int)$pl['user_id'] === (int)$user['id']) {
-                            $myGangReward = ['cash'=>$cash,'stats'=>$awarded,'details'=>$statRewards,'profession'=>$profession];
-                        }
-                    }
-                    $db->prepare("UPDATE gang_heists SET status='completed',resolved_at=NOW() WHERE id=?")->execute([(int)$lockedHeist['id']]);
-                    $db->commit();
-                    $gangHeistMessage = 'Napad na konwój udany! Każdy uczestnik otrzymał nagrody uwzględniające jego profesję.';
-                    if ($myGangReward !== null) {
-                        $mine = $myGangReward['stats'];
-                        $gangHeistMessage .= ' Twoja nagroda: +'.$myGangReward['cash'].' $, +'.$mine['strength'].' siły, +'.$mine['endurance'].' wytrzymałości, +'.$mine['intelligence'].' inteligencji, +'.$mine['charisma'].' charyzmy i +'.$mine['cunning'].' sprytu.'
-                            . profession_robbery_stat_notice($myGangReward['profession'],$myGangReward['details']);
-                    }
-                }
-            }
-        } catch(Throwable $ex) {
-            if($db->inTransaction())$db->rollBack();
-            $gangHeistMessage=$ex->getMessage();
-        }
-        // Odśwież aktywny skok i uczestników po akcji.
-        $gh=$db->prepare("SELECT * FROM gang_heists WHERE gang_id=? AND status='recruiting' ORDER BY id DESC LIMIT 1");
-        $gh->execute([(int)$streetGang['id']]); $gangHeist=$gh->fetch() ?: null;
-        $stats=get_player_stats($db,(int)$user['id']);
-    }
-}
-if ($gangHeist && $db instanceof PDO) {
-    $gp=$db->prepare("SELECT u.id,u.login,ghp.robbery_power FROM gang_heist_participants ghp JOIN users u ON u.id=ghp.user_id WHERE ghp.heist_id=? AND ghp.status='accepted' ORDER BY ghp.joined_at");
-    $gp->execute([(int)$gangHeist['id']]); $gangHeistParticipants=$gp->fetchAll();
-}
-
+// Skoki gangu są rozstrzygane automatycznie przez dedykowany endpoint AJAX.
+// Strona główna jedynie pokazuje panel, a akcje create/accept wykonuje
+// base/gang_heist_engine.php w transakcji, bez przeładowania strony.
 $showProfile = isset($_GET['view']) && $_GET['view'] === 'profile';
 $showMissions = isset($_GET['view']) && $_GET['view'] === 'missions';
 $showWanted = isset($_GET['view']) && $_GET['view'] === 'wanted';
@@ -1567,39 +1466,19 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <?php if ($selectedLocation === 'ulica'): ?>
           <div class="tabs">
             <a class="button <?= $streetTab==='robbery'?'':'secondary' ?>" href="./?page=main&amp;location=ulica">Rabunki</a>
-            <?php if ($streetGang): ?><a class="button <?= $streetTab==='gang'?'':'secondary' ?>" href="./?page=main&amp;location=ulica&amp;street_tab=gang">Skok gangu</a><?php endif; ?>
+            <?php if ($streetGang): ?><a id="gangHeistTab" class="button <?= $streetTab==='gang'?'':'secondary' ?>" href="./?page=main&amp;location=ulica&amp;street_tab=gang">Skok gangu</a><?php endif; ?>
           </div>
           <?php if ($stats): ?>
             <p class="muted">Podział puli punktów dla profesji <?= e((string)$stats['profession']) ?>: <?= e(profession_stat_distribution_description((string)$stats['profession'])) ?>. Suma punktów nie zmienia się.</p>
           <?php endif; ?>
           <?php if ($streetTab==='gang' && $streetGang): ?>
-            <h3>Napad na konwój</h3>
-            <p class="muted">Minimum 2 graczy · 10% energii od każdego · wymagana moc rabunku: 50–60 u każdego uczestnika · nagroda: 500–700 $ i stała pula 40 pkt statystyk na gracza, dzielona według profesji (minimum +1 do każdej).</p>
-            <p class="muted">Każdy uczestnik jest sprawdzany względem losowego progu 50–60. Przy niepowodzeniu każdy traci 4 pkt (10% puli), rozłożone równomiernie na statystyki niezależnie od profesji, i trafia do więzienia na 60 minut.</p>
-
-            <?php if ($gangHeistMessage!==''): ?><p class="stat"><?= e($gangHeistMessage) ?></p><?php endif; ?>
-            <?php if (!$gangHeist): ?>
-              <form method="post" action="./?page=main&amp;location=ulica&amp;street_tab=gang">
-                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="gang_heist_create">
-                <button type="submit">Przygotuj napad na konwój</button>
-              </form>
-            <?php else: ?>
-              <h3>Zaakceptowani gracze: <?= count($gangHeistParticipants) ?></h3>
-              <?php foreach($gangHeistParticipants as $hp): ?><p class="stat"><a href="./?page=main&amp;view=profile&amp;user=<?= (int)$hp['id'] ?>"><?= e($hp['login']) ?></a></p><?php endforeach; ?>
-              <?php $joined=false; foreach($gangHeistParticipants as $hp) if((int)$hp['id']===(int)$user['id']) $joined=true; ?>
-              <?php if(!$joined): ?>
-                <form method="post" action="./?page=main&amp;location=ulica&amp;street_tab=gang">
-                  <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="gang_heist_join">
-                  <button type="submit">Akceptuj udział</button>
-                </form>
-              <?php endif; ?>
-              <?php if((int)$gangHeist['created_by']===(int)$user['id']): ?>
-                <form method="post" action="./?page=main&amp;location=ulica&amp;street_tab=gang">
-                  <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="gang_heist_start">
-                  <button type="submit" <?= count($gangHeistParticipants)<2?'disabled':'' ?>>Rozpocznij napad</button>
-                </form>
-              <?php endif; ?>
-            <?php endif; ?>
+            <section id="gangHeistPanel" aria-label="Skok gangu" aria-live="polite">
+              <h3>Napad na konwój</h3>
+              <p class="muted">Minimum 2 członków gangu i 2 zaakceptowanych uczestników · koszt 10% energii od uczestnika · wymagana moc: 50–60 · 500–700 $ i stałe 40 pkt na zaakceptowanego gracza.</p>
+              <p class="muted">Skok rusza automatycznie po 2. akceptacji. Jeśli choć jeden zaakceptowany uczestnik nie ma wymaganej mocy lub energii, wszyscy członkowie gangu (również nieuczestniczący) trafiają na godzinę do więzienia i tracą 4 pkt statystyk. Straty są rozdzielane równomiernie, bez względu na profesję.</p>
+              <div id="gangHeistFeedback" class="stat" role="status" style="display:none"></div>
+              <div id="gangHeistBody"><p class="muted">Ładowanie aktywnych skoków gangu…</p></div>
+            </section>
           <?php else: ?>
             <h3>Rabunek na spożywczak</h3>
             <p class="muted">Koszt: 5% energii · Szansa wpadki: 0% · Nagroda: 10–20 $ i stała pula 10 pkt statystyk dzielona według profesji, minimum +1 do każdej. Przy niepowodzeniu tracisz 1 pkt (10% puli). Bez limitu prób, dopóki masz energię.</p>
@@ -1742,6 +1621,163 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
 </div>
 <?php if ($user): ?>
 <script>
+
+<?php if ($selectedLocation === 'ulica' && $streetGang): ?>
+/* Refresh gang raids without full-page reloads. Actions are POST + CSRF; polls GET. */
+(() => {
+    const url = './?page=gang_heist_ajax';
+    const csrfToken = <?= json_encode(csrf_token(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const body = document.getElementById('gangHeistBody');
+    const feedback = document.getElementById('gangHeistFeedback');
+    const tab = document.getElementById('gangHeistTab');
+    let pending = false;
+    let doingAction = false;
+    let lastPanelSignature = '';
+    let lastEventId = 0;
+    let latestFeedback = '';
+    let haveLoaded = false;
+
+    function notify(message, error = false) {
+        if (!feedback) return;
+        feedback.style.display = 'block';
+        feedback.style.borderColor = error ? '#b94444' : '#399e64';
+        feedback.textContent = message;
+    }
+
+    function item(tag, text, className = '') {
+        const el = document.createElement(tag);
+        if (className) el.className = className;
+        el.textContent = text;
+        return el;
+    }
+
+    function actionButton(label, action) {
+        const button = item('button', label);
+        button.type = 'button';
+        button.addEventListener('click', () => sendAction(action));
+        return button;
+    }
+
+    function render(state) {
+        const gang = state.gang;
+        const active = state.active;
+        if (tab) {
+            if (active) {
+                tab.textContent = 'Skok gangu (' + active.accepted_count + '/' + active.required + ')';
+            } else {
+                tab.textContent = 'Skok gangu';
+            }
+        }
+        if (!body) return;
+        const signature = JSON.stringify([gang, active, state.jailed]);
+        if (signature === lastPanelSignature) return;
+        lastPanelSignature = signature;
+        body.replaceChildren();
+
+        if (!gang) {
+            body.append(item('p', 'Nie należysz do żadnego gangu.', 'muted'));
+            return;
+        }
+
+        if (state.jailed) {
+            body.append(item('p', 'Jesteś w więzieniu. Nie możesz przygotowywać ani akceptować skoków.', 'muted'));
+            const link = item('a', 'Przejdź do więzienia', 'button secondary');
+            link.href = './?page=main&location=wiezienie';
+            body.append(link);
+            return;
+        }
+
+        if (!active) {
+            body.append(item('p', 'Nie ma obecnie przygotowywanego skoku.', 'muted'));
+            body.append(item('p', 'Członkowie gangu: ' + gang.member_count + '. Minimum do przygotowania: ' + gang.required + '.', 'muted'));
+            const create = actionButton('Przygotuj napad na konwój', 'create');
+            if (gang.member_count < gang.required) {
+                create.disabled = true;
+                create.title = 'Za mało członków gangu';
+                body.append(item('p', 'Zablokowane: wymaganych członków ' + gang.required + ', aktualnie ' + gang.member_count + '.', 'muted'));
+            }
+            body.append(create);
+            return;
+        }
+
+        body.append(item('h3', 'Oczekujący napad na konwój'));
+        body.append(item('p', 'Rozpoczął: ' + active.creator + '. Zaakceptowanych: ' + active.accepted_count + '/' + active.required + '.', 'muted'));
+        active.accepted.forEach(participant => {
+            const row = item('p', '', 'stat');
+            const link = item('a', participant.login);
+            link.href = './?page=main&view=profile&player=' + encodeURIComponent(participant.id);
+            row.append(link);
+            body.append(row);
+        });
+        if (!active.joined) {
+            body.append(actionButton('Akceptuj udział w skoku', 'accept'));
+            body.append(item('p', 'Twoja akceptacja może natychmiast rozpocząć skok.', 'muted'));
+        } else {
+            body.append(item('p', 'Zaakceptowałeś udział. Skok wykona się automatycznie po osiągnięciu wymaganej liczby uczestników.', 'muted'));
+        }
+    }
+
+    function acceptResponse(data) {
+        if (!data.ok || !data.state) throw new Error(data.error || 'Nie udało się pobrać skoku.');
+        const event = data.state.latest_event;
+        if (event && event.id !== lastEventId) {
+            lastEventId = event.id;
+            // A successful result (or jail after failure) appears on all clients,
+            // even if another member clicked the final accept button.
+            notify(event.message, event.result === 'failed');
+        }
+        render(data.state);
+        if (data.message) notify(data.message);
+    }
+
+    async function refresh() {
+        if (pending || doingAction || document.hidden) return;
+        pending = true;
+        try {
+            const response = await fetch(url, {credentials:'same-origin',cache:'no-store'});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Błąd połączenia.');
+            acceptResponse(data);
+            haveLoaded = true;
+        } catch (err) {
+            if (!haveLoaded) notify(err.message || 'Błąd odświeżania skoków.', true);
+        } finally {
+            pending = false;
+        }
+    }
+
+    async function sendAction(action) {
+        if (doingAction) return;
+        doingAction = true;
+        if (body) body.querySelectorAll('button').forEach(btn => btn.disabled = true);
+        try {
+            const payload = new URLSearchParams({action,csrf_token:csrfToken});
+            const response = await fetch(url, {
+                method:'POST',credentials:'same-origin',cache:'no-store',
+                headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                body:payload
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Nie udało się wykonać akcji.');
+            acceptResponse(data);
+        } catch (err) {
+            notify(err.message || 'Nie udało się wykonać akcji.',true);
+            // Let the next poll restore the appropriate controls.
+            lastPanelSignature = '';
+        } finally {
+            doingAction = false;
+            await refresh();
+        }
+    }
+
+    setInterval(refresh, 3000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refresh();
+    });
+    window.addEventListener('focus', refresh);
+    refresh();
+})();
+<?php endif; ?>
 
 /* Lightweight HUD: only change DOM when server values differ. */
 (() => {
