@@ -41,6 +41,9 @@ try {
     }
 
     gang_heist_install($db);
+    // Repair old SQL records after a gang was deleted outside MBZ.
+    // The maintenance queries are safe for existing gangs and active heists.
+    gang_heist_cleanup_orphans($db);
     if ($method==='POST') {
         // Perform schema checks BEFORE beginning heist transaction.
         ensure_profession_stat_distribution_table($db);
