@@ -239,6 +239,102 @@ if ($user && $db instanceof PDO) {
     $pendingContactCount=(int)$pendingContactsStmt->fetchColumn();
 }
 
+// Zaproszenia przychodzące do gangu: akceptacja i odrzucenie z zakładki Powiadomienia.
+$pendingGangInviteCount = 0;
+$gangInviteInbox = [];
+$gangInviteResponse = '';
+$alreadyInGang = false;
+if ($user && $db instanceof PDO) {
+    $me=(int)$user['id'];
+    if ($showNotifications && $_SERVER['REQUEST_METHOD']==='POST'
+        && in_array($_POST['action'] ?? '', ['gang_invite_accept','gang_invite_reject'],true)) {
+        if (!csrf_valid(is_string($_POST['csrf_token'] ?? null) ? $_POST['csrf_token'] : null)) {
+            $gangInviteResponse='Sesja wygasła. Odśwież stronę.';
+        } else {
+            $inviteId=filter_var($_POST['invite_id'] ?? null,FILTER_VALIDATE_INT);
+            if (!$inviteId || $inviteId<1) {
+                $gangInviteResponse='Nieprawidłowe zaproszenie.';
+            } else {
+                try {
+                    $db->beginTransaction();
+                    // Block simultaneous acceptances to multiple gangs by the same player.
+                    $accountLock=$db->prepare('SELECT user_id FROM player_stats WHERE user_id=? FOR UPDATE');
+                    $accountLock->execute([$me]);
+                    if (!$accountLock->fetchColumn()) throw new RuntimeException('Nie znaleziono postaci.');
+
+                    $invitation=$db->prepare("SELECT gi.id,gi.gang_id,g.name AS gang_name
+                        FROM gang_invites gi JOIN gangs g ON g.id=gi.gang_id
+                        WHERE gi.id=? AND gi.invited_user_id=? AND gi.status='pending'
+                        FOR UPDATE");
+                    $invitation->execute([(int)$inviteId,$me]);
+                    $invite=$invitation->fetch(PDO::FETCH_ASSOC);
+                    if (!$invite) throw new RuntimeException('To zaproszenie nie jest już aktualne.');
+
+                    if ($_POST['action']==='gang_invite_reject') {
+                        // 'cancelled' is already supported by the current invitation schema.
+                        $reject=$db->prepare("UPDATE gang_invites
+                            SET status='cancelled',responded_at=NOW()
+                            WHERE id=? AND invited_user_id=? AND status='pending'");
+                        $reject->execute([(int)$inviteId,$me]);
+                        $message='Odrzucono zaproszenie do gangu '.$invite['gang_name'].'.';
+                    } else {
+                        $memberCheck=$db->prepare('SELECT gang_id FROM gang_members WHERE user_id=? LIMIT 1');
+                        $memberCheck->execute([$me]);
+                        if ($memberCheck->fetchColumn()) throw new RuntimeException('Należysz już do gangu.');
+
+                        $gangId=(int)$invite['gang_id'];
+                        $gangLock=$db->prepare('SELECT id FROM gangs WHERE id=? FOR UPDATE');
+                        $gangLock->execute([$gangId]);
+                        if (!$gangLock->fetchColumn()) throw new RuntimeException('Ten gang już nie istnieje.');
+                        $capacity=$db->prepare('SELECT COUNT(*) FROM gang_members WHERE gang_id=?');
+                        $capacity->execute([$gangId]);
+                        if ((int)$capacity->fetchColumn()>=20) throw new RuntimeException('Gang ma już maksymalnie 20 członków.');
+
+                        $join=$db->prepare("INSERT INTO gang_members(gang_id,user_id,role) VALUES (?,?,'member')");
+                        $join->execute([$gangId,$me]);
+                        // Membership itself confirms the acceptance. Delete pending
+                        // invitations; no SQL enum changes or manual migrations required.
+                        $db->prepare("DELETE FROM gang_invites WHERE invited_user_id=? AND status='pending'")
+                           ->execute([$me]);
+                        $message='Dołączyłeś do gangu '.$invite['gang_name'].'.';
+                    }
+                    $db->commit();
+                    $_SESSION['mbz_gang_invite_flash']=$message;
+                    redirect('./?page=main&view=notifications');
+                } catch (Throwable $e) {
+                    if ($db->inTransaction()) $db->rollBack();
+                    $gangInviteResponse=$e instanceof RuntimeException
+                        ? $e->getMessage() : 'Nie udało się odpowiedzieć na zaproszenie.';
+                    if (!$e instanceof RuntimeException) error_log('Gang invite response: '.$e->getMessage());
+                }
+            }
+        }
+    }
+    $pendingInvitesQuery=$db->prepare("SELECT COUNT(*) FROM gang_invites
+        WHERE invited_user_id=? AND status='pending'");
+    $pendingInvitesQuery->execute([$me]);
+    $pendingGangInviteCount=(int)$pendingInvitesQuery->fetchColumn();
+
+    if ($showNotifications) {
+        if (isset($_SESSION['mbz_gang_invite_flash'])) {
+            $gangInviteResponse=(string)$_SESSION['mbz_gang_invite_flash'];
+            unset($_SESSION['mbz_gang_invite_flash']);
+        }
+        $inboxStmt=$db->prepare("SELECT gi.id,gi.gang_id,gi.created_at,
+            g.name AS gang_name,u.login AS inviter_login,
+            (SELECT COUNT(*) FROM gang_members gm WHERE gm.gang_id=gi.gang_id) AS member_count
+            FROM gang_invites gi JOIN gangs g ON g.id=gi.gang_id
+            JOIN users u ON u.id=gi.invited_by
+            WHERE gi.invited_user_id=? AND gi.status='pending'
+            ORDER BY gi.created_at DESC,gi.id DESC");
+        $inboxStmt->execute([$me]);
+        $gangInviteInbox=$inboxStmt->fetchAll(PDO::FETCH_ASSOC);
+        $memberCheck=$db->prepare('SELECT 1 FROM gang_members WHERE user_id=? LIMIT 1');
+        $memberCheck->execute([$me]);
+        $alreadyInGang=(bool)$memberCheck->fetchColumn();
+    }
+}
+
 // Zaproszenia do gangu z listy znajomych — tylko lider własnego gangu.
 $contactGangLeaderId = 0;
 $gangInviteMessage = '';
@@ -919,7 +1015,7 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
         <a href="./?page=main&amp;view=travel">Podróż</a>
         <a href="./?page=main&amp;view=market">Rynek</a>
         <a href="./?page=main&amp;view=ranking">Ranking</a>
-        <a href="./?page=main&amp;view=notifications">Powiadomienia</a>
+        <a id="notificationNavLink" href="./?page=main&amp;view=notifications">Powiadomienia<?= $pendingGangInviteCount>0 ? ' ('.$pendingGangInviteCount.')' : '' ?></a>
     </nav>
 
     <?php if ($activeTravel): ?>
@@ -1126,9 +1222,47 @@ if ($selectedLocation !== '' && isset($lockedLocations[$selectedLocation])) {
       <?php endif; ?>
     </section>
     <?php elseif ($showNotifications): ?>
-    <section class="card">
+    <section class="card location-panel">
+        <a class="button secondary back-button" href="./?page=main">← Powrót do menu</a>
         <h2>Powiadomienia</h2>
-        <p class="muted">Brak powiadomień.</p>
+        <?php if ($gangInviteResponse!==''): ?><p class="stat" role="status"><?= e($gangInviteResponse) ?></p><?php endif; ?>
+        <h3>Zaproszenia do gangów<?= $pendingGangInviteCount>0 ? ' ('.$pendingGangInviteCount.')' : '' ?></h3>
+        <?php if (!$gangInviteInbox): ?>
+          <p class="muted">Brak oczekujących zaproszeń do gangu.</p>
+        <?php endif; ?>
+        <?php foreach ($gangInviteInbox as $invite): ?>
+          <article class="stat" style="margin:12px 0;padding:16px">
+            <strong><?= e($invite['gang_name']) ?></strong>
+            <p>Zaprasza: <strong><?= e($invite['inviter_login']) ?></strong></p>
+            <p class="muted">Członkowie: <?= (int)$invite['member_count'] ?>/20 · Wysłano: <?= e($invite['created_at']) ?></p>
+            <?php if (!$alreadyInGang && !$activeTravel && (int)$invite['member_count']<20): ?>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <form method="post" action="./?page=main&amp;view=notifications">
+                  <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                  <input type="hidden" name="action" value="gang_invite_accept">
+                  <input type="hidden" name="invite_id" value="<?= (int)$invite['id'] ?>">
+                  <button type="submit">Akceptuj</button>
+                </form>
+                <form method="post" action="./?page=main&amp;view=notifications">
+                  <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                  <input type="hidden" name="action" value="gang_invite_reject">
+                  <input type="hidden" name="invite_id" value="<?= (int)$invite['id'] ?>">
+                  <button class="secondary" type="submit">Odrzuć</button>
+                </form>
+              </div>
+            <?php else: ?>
+              <p class="muted"><?= $alreadyInGang ? 'Należysz już do gangu.' : ($activeTravel ? 'Odpowiedz po zakończeniu podróży.' : 'Gang jest już pełny.') ?></p>
+              <?php if (!$activeTravel): ?>
+                <form method="post" action="./?page=main&amp;view=notifications">
+                  <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                  <input type="hidden" name="action" value="gang_invite_reject">
+                  <input type="hidden" name="invite_id" value="<?= (int)$invite['id'] ?>">
+                  <button class="secondary" type="submit">Odrzuć</button>
+                </form>
+              <?php endif; ?>
+            <?php endif; ?>
+          </article>
+        <?php endforeach; ?>
     </section>
     <?php elseif ($showRanking): ?>
     <section class="card location-panel">
