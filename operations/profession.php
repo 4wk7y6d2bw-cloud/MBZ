@@ -18,7 +18,7 @@ $professionDescriptions = [
  'Morderca' => '40% punktów statystyk z rabunków trafia w siłę i 40% w wytrzymałość. Silniejszy w walce z graczami.',
  'Złodziej' => '40% punktów z rabunków trafia w spryt. Zdobywa większe łupy i ma większe szanse powodzenia napadów.',
  'Biznesmen' => '60% punktów z rabunków trafia w inteligencję. Taniej inwestuje w budynki i ma więcej nieruchomości.',
- 'Gangster' => 'Dzieli punkty po 20% na każdą statystykę. Ma lepsze warunki w więzieniu i mniejsze straty po nieudanych napadach.',
+ 'Gangster' => 'Dzieli punkty po 20% na każdą statystykę. Ma korzystniejsze warunki w więzieniu. Przy porażce traci punkty statystyk tak samo jak inne profesje.',
  'Diler' => '60% punktów z rabunków trafia w spryt. Zarabia więcej na handlu i przewozi większe ilości towaru.',
  'Alfons' => '50% punktów z rabunków trafia w charyzmę, a 30% w spryt. Lepiej zarabia na własnych lokalach.',
 ];
